@@ -20,14 +20,15 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Tesseract" Version="5.2.0" />
+    <PackageReference Include="Sdcb.PaddleOCR" Version="3.0.1" />
+    <PackageReference Include="Sdcb.PaddleOCR.Models.Local" Version="3.0.1" />
+    <PackageReference Include="Sdcb.PaddleInference.runtime.win64.mkl" Version="2.5.0" />
+    <PackageReference Include="OpenCvSharp4" Version="4.11.0.20250507" />
+    <PackageReference Include="OpenCvSharp4.runtime.win" Version="4.11.0.20250507" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
     <PackageReference Include="System.Drawing.Common" Version="8.0.2" />
   </ItemGroup>
 
-  <!-- Ensure tessdata is included in the output -->
-  <ItemGroup>
-    <None Update="tessdata\**\*" CopyToOutputDirectory="PreserveNewest" />
-  </ItemGroup>
+  <!-- PaddleOCR models are included via Sdcb.PaddleOCR.Models.Local package -->
 
 </Project>

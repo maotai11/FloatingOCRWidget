@@ -1,47 +1,47 @@
 using System;
 using System.Drawing;
-
+using System.Drawing.Imaging;
 using System.IO;
+using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
-using Tesseract;
+using Sdcb.PaddleOCR;
+using Sdcb.PaddleOCR.Models;
+using Sdcb.PaddleOCR.Models.Local;
+using OpenCvSharp;
 
 namespace FloatingOCRWidget.Services
 {
     public class OCRService : IDisposable
     {
-        private TesseractEngine _engine;
-        private readonly string _tessdataPath;
+        private PaddleOcrAll _ocrEngine;
         private bool _disposed = false;
 
         public OCRService()
         {
-            _tessdataPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "tessdata");
-            if (!Directory.Exists(_tessdataPath))
-                Directory.CreateDirectory(_tessdataPath);
             InitializeEngine();
         }
 
         private void InitializeEngine()
         {
-            // Try Chinese + English first, fallback to English only
-            foreach (var lang in new[] { "chi_tra+chi_sim+eng", "eng" })
+            try
             {
-                try
+                // Use Chinese V3 models that support traditional Chinese, simplified Chinese, and English
+                var models = LocalFullModels.ChineseV3;
+                _ocrEngine = new PaddleOcrAll(models)
                 {
-                    _engine = new TesseractEngine(_tessdataPath, lang, EngineMode.Default);
-                    _engine.SetVariable("preserve_interword_spaces", "1");
-                    return;
-                }
-                catch (Exception ex)
-                {
-                    System.Diagnostics.Debug.WriteLine($"Tesseract init ({lang}): {ex.Message}");
-                    _engine?.Dispose();
-                    _engine = null;
-                }
+                    AllowRotateDetection = true,    // Enable rotated text detection
+                    Enable180Classification = true  // Enable handwriting and 180-degree text support
+                };
+
+                System.Diagnostics.Debug.WriteLine("PaddleOCR engine initialized successfully with Chinese V3 models");
             }
-            throw new InvalidOperationException(
-                "無法初始化 OCR 引擎。\n請確保 tessdata 語言包放在程式目錄下的 tessdata/ 資料夾。");
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"PaddleOCR initialization error: {ex.Message}");
+                throw new InvalidOperationException(
+                    $"無法初始化 PaddleOCR 引擎: {ex.Message}\n請確保 PaddleOCR 模型正確安裝。");
+            }
         }
 
         public async Task<string> RecognizeTextAsync(Bitmap image)
@@ -52,25 +52,27 @@ namespace FloatingOCRWidget.Services
             {
                 try
                 {
-                    using (var ms = new MemoryStream())
-                    {
-                        image.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
-                        ms.Seek(0, SeekOrigin.Begin);
+                    // Convert Bitmap to OpenCvSharp Mat
+                    using var ms = new MemoryStream();
+                    image.Save(ms, ImageFormat.Png);
+                    ms.Position = 0;
 
-                        using (var pix = Pix.LoadFromMemory(ms.ToArray()))
-                        using (var page = _engine.Process(pix))
-                        {
-                            var text = page.GetText() ?? string.Empty;
-                            // Collapse excess whitespace while preserving newlines
-                            text = Regex.Replace(text, @"[ \t]+", " ");
-                            text = Regex.Replace(text, @"\n{3,}", "\n\n");
-                            return text.Trim();
-                        }
-                    }
+                    using var mat = Mat.FromStream(ms, ImreadModes.Color);
+                    var result = _ocrEngine.Run(mat);
+
+                    // Extract text from PaddleOCR result regions
+                    var text = string.Join("\n", result.Regions.Select(r => r.Text));
+
+                    // Maintain existing post-processing behavior
+                    text = Regex.Replace(text, @"[ \t]+", " ");
+                    text = Regex.Replace(text, @"\n{3,}", "\n\n");
+
+                    System.Diagnostics.Debug.WriteLine($"PaddleOCR recognized {result.Regions.Length} text regions");
+                    return text.Trim();
                 }
                 catch (Exception ex)
                 {
-                    System.Diagnostics.Debug.WriteLine($"OCR error: {ex.Message}");
+                    System.Diagnostics.Debug.WriteLine($"PaddleOCR error: {ex.Message}");
                     return string.Empty;
                 }
             });
@@ -80,7 +82,7 @@ namespace FloatingOCRWidget.Services
         {
             if (!_disposed)
             {
-                _engine?.Dispose();
+                _ocrEngine?.Dispose();
                 _disposed = true;
             }
         }

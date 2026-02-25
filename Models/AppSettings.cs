@@ -8,7 +8,9 @@ namespace FloatingOCRWidget.Models
         public bool StartWithWindows { get; set; } = false;
         public bool MinimizeToTray { get; set; } = true;
         public int MaxClipboardHistory { get; set; } = 50;
-        public string TesseractLanguage { get; set; } = "chi_tra+chi_sim+eng"; // 繁中+簡中+英文
+        public string OCREngine { get; set; } = "PaddleOCR"; // OCR 引擎類型
+        public bool EnableHandwriting { get; set; } = true; // 啟用手寫識別
+        public bool EnableRotationDetection { get; set; } = true; // 啟用旋轉文字檢測
         public string HotKey { get; set; } = "Ctrl+Alt+O"; // 全域快捷鍵
         public bool ShowNotifications { get; set; } = true;
 

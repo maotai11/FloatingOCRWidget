@@ -85,9 +85,13 @@ namespace FloatingOCRWidget.Services
             if (_currentSettings.OCR == null)
                 _currentSettings.OCR = new AppSettings.OCRSettings();
 
-            // 確保語言設定不為空
-            if (string.IsNullOrEmpty(_currentSettings.TesseractLanguage))
-                _currentSettings.TesseractLanguage = "chi_tra+chi_sim+eng";
+            // 確保 OCR 引擎設定不為空
+            if (string.IsNullOrEmpty(_currentSettings.OCREngine))
+                _currentSettings.OCREngine = "PaddleOCR";
+
+            // 為舊版本設定提供向下相容性 (遷移 Tesseract 設定)
+            if (_currentSettings.OCREngine == "chi_tra+chi_sim+eng" || _currentSettings.OCREngine.Contains("tesseract"))
+                _currentSettings.OCREngine = "PaddleOCR";
 
             // 確保快捷鍵設定不為空
             if (string.IsNullOrEmpty(_currentSettings.HotKey))

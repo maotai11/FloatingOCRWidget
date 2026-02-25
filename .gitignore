@@ -1,0 +1,38 @@
+# Build results
+bin/
+obj/
+publish/
+
+# Visual Studio
+.vs/
+.vscode/
+*.user
+*.suo
+*.userprefs
+
+# NuGet packages
+packages/
+*.nupkg
+
+# Debug files
+*.pdb
+
+# Temporary files
+*.tmp
+*.log
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Windows shortcuts
+*.lnk
+
+# Application specific
+settings.json
+clipboard_history.json

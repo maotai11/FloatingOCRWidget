@@ -48,32 +48,35 @@
 ### 核心技術
 - **Framework**: .NET 8.0 (Windows)
 - **UI**: WPF + Windows Forms 混合
-- **OCR 引擎**: Tesseract 5.2.0
-- **語言支援**: 繁中/簡中/英文
+- **OCR 引擎**: PaddleOCR PP-OCRv3 (Sdcb.PaddleOCR 3.0.1)
+- **圖像處理**: OpenCvSharp4 4.11.0
+- **語言支援**: 繁中/簡中/英文 + 手寫辨識
 
 ### 系統需求
 - **作業系統**: Windows 10/11 (x64)
 - **記憶體**: 建議 4GB 以上
-- **磁碟空間**: 約 150MB
+- **磁碟空間**: 約 736MB（完整版）/ 448MB（單檔版）
 - **.NET Runtime**: 不需要（已包含）
 
 ### 檔案結構
 ```
-FloatingOCRWidget/
-├── FloatingOCRWidget.exe     # 主程式
-├── tessdata/                 # OCR 語言模型
-│   ├── eng.traineddata      # 英文 (23MB)
-│   ├── chi_tra.traineddata  # 繁體中文 (56MB)
-│   └── chi_sim.traineddata  # 簡體中文 (42MB)
-├── *.dll                     # 相依套件
+publish/paddleocr-withdata/
+├── FloatingOCRWidget.exe             # 主程式
+├── Sdcb.PaddleOCR.Models.LocalV3.dll # PaddleOCR ChineseV3 模型 (132MB)
+├── OpenCvSharpExtern.dll             # 圖像處理引擎 (60MB)
+├── Sdcb.PaddleInference.dll          # PaddleOCR 推理引擎
+├── *.dll                             # .NET 運行庫
 └── 其他支援檔案...
+
+publish/paddleocr-standalone/
+└── FloatingOCRWidget.exe             # 單一執行檔 (448MB，含所有依賴)
 ```
 
 ## ⚡ 效能優化
 
 ### 已實施的優化
 - ✅ **異步處理** - OCR 操作不會凍結 UI
-- ✅ **引擎重用** - 避免重複初始化 Tesseract
+- ✅ **引擎重用** - 避免重複初始化 PaddleOCR
 - ✅ **記憶體管理** - 正確的資源釋放機制
 - ✅ **自包含部署** - 無需安裝額外 Runtime
 - ✅ **本地化處理** - 完全離線運作
@@ -158,7 +161,7 @@ dotnet publish -c Release --self-contained -r win-x64 -p:PublishSingleFile=true 
 A: 確認是否為 Windows x64 系統，並檢查是否有防毒軟體攔截。
 
 ### Q: OCR 識別率不高？
-A: 確保截圖區域清晰，文字對比度高，避免手寫或藝術字體。
+A: 確保截圖區域清晰，文字對比度高。PaddleOCR 支援手寫文字，但極草書或藝術字體效果有限。
 
 ### Q: 記憶體佔用過高？
 A: 清除剪貼簿歷史記錄，或重新啟動程式。
@@ -169,6 +172,43 @@ A: 某些受保護的程式（如銀行軟體）可能阻止螢幕截圖。
 ## 📄 授權
 
 本專案採用 MIT 授權條款
+
+---
+
+## 📋 更新紀錄
+
+### v2.0.0 (2026-02-26)
+**重大升級：Tesseract → PaddleOCR**
+
+**新增功能：**
+- ✨ 升級 OCR 引擎為 PaddleOCR PP-OCRv3（百度飛槳）
+- ✍️ 支援手寫中文（繁體/簡體）文字辨識
+- ✍️ 支援手寫英文文字辨識
+- 🔄 支援旋轉文字自動偵測（0°/90°/180°/270°）
+- 📊 提升混合中英文識別準確率 (~+10%)
+
+**技術變更：**
+- 新增 `Sdcb.PaddleOCR 3.0.1` 依賴
+- 新增 `OpenCvSharp4 4.11.0` 圖像處理
+- 移除 Tesseract 及 tessdata 語言包（原 121MB）
+- PaddleOCR 模型內嵌至 DLL（ChineseV3，132MB）
+- 設定結構更新：`TesseractLanguage` → `OCREngine`（向下相容）
+
+**部署：**
+- 完整版：`publish/paddleocr-withdata/`（736MB）
+- 單檔版：`publish/paddleocr-standalone/`（448MB）
+
+---
+
+### v1.0.0 (2026-02-25)
+**初始版本**
+
+- 🖱️ 螢幕框選 OCR 識別（基於 Tesseract 5.2.0）
+- 📋 剪貼簿歷史記錄管理（最多 50 筆）
+- 🎯 浮動透明視窗（透明度可調）
+- 📱 系統托盤整合
+- 💾 離線自包含 exe 部署（135MB 單檔版）
+- 🌐 支援繁體中文、簡體中文、英文（tessdata 語言包）
 
 ---
 

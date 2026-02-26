@@ -162,44 +162,57 @@ namespace FloatingOCRWidget.Services
             return result;
         }
 
-        // ── Detect tokenizer type and load BOS/EOS from tokenizer_config.json ──
+        // ── Detect tokenizer type and load BOS/EOS ────────────────────────────
+        // Priority: generation_config.json > tokenizer_config.json > defaults
         private void LoadSpecialTokens(string dir, Dictionary<int, string> vocab)
         {
-            // Build reverse lookup for token string → id
             var tokenToId = vocab.ToDictionary(kv => kv.Value, kv => (long)kv.Key);
 
             // Detect tokenizer type:
-            // Chinese BERT-style: vocab has [CLS], [SEP], [PAD]  → char-level
-            // English GPT-2:      vocab has <s>, </s>, Ġ tokens  → BPE
+            // BERT-style: has [CLS]/[SEP] → Chinese char-level
+            // PreTrainedTokenizerFast: has <s>/</s> but still char-level Chinese
             bool hasCls = tokenToId.ContainsKey("[CLS]");
-            bool hasSep = tokenToId.ContainsKey("[SEP]");
-            _isBpeTokenizer = !hasCls;
+            bool hasBpe = vocab.Values.Any(v => v.Contains("Ġ")); // GPT-2 BPE marker
+            _isBpeTokenizer = hasBpe;
 
-            if (hasCls && hasSep)
+            if (hasCls)
             {
-                // Chinese BERT-style tokenizer
-                _decoderStartToken = tokenToId["[CLS]"];   // typically 101
-                _eosTokenId        = tokenToId["[SEP]"];   // typically 102
-                Debug.WriteLine($"TrOCR: Chinese BERT tokenizer. [CLS]={_decoderStartToken} [SEP]={_eosTokenId}");
+                _decoderStartToken = tokenToId.TryGetValue("[CLS]", out long cls) ? cls : 101;
+                _eosTokenId        = tokenToId.TryGetValue("[SEP]", out long sep) ? sep : 102;
+                Debug.WriteLine($"TrOCR: BERT tokenizer [CLS]={_decoderStartToken} [SEP]={_eosTokenId}");
                 return;
             }
 
-            // Try tokenizer_config.json for explicit special token values
-            var configPath = Path.Combine(dir, "tokenizer_config.json");
-            if (!File.Exists(configPath)) return;
+            // 1st: read generation_config.json (most authoritative)
+            var genCfgPath = Path.Combine(dir, "generation_config.json");
+            if (File.Exists(genCfgPath))
+            {
+                try
+                {
+                    var gcfg = JObject.Parse(File.ReadAllText(genCfgPath));
+                    if (gcfg["decoder_start_token_id"] != null)
+                        _decoderStartToken = (long)gcfg["decoder_start_token_id"];
+                    if (gcfg["eos_token_id"] != null)
+                        _eosTokenId = (long)gcfg["eos_token_id"];
+                    Debug.WriteLine($"TrOCR: generation_config → BOS={_decoderStartToken} EOS={_eosTokenId} BPE={_isBpeTokenizer}");
+                    return;
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"TrOCR: generation_config read error: {ex.Message}");
+                }
+            }
 
+            // 2nd: fallback to tokenizer_config.json
+            var tokCfgPath = Path.Combine(dir, "tokenizer_config.json");
+            if (!File.Exists(tokCfgPath)) return;
             try
             {
-                var cfg = JObject.Parse(File.ReadAllText(configPath));
-
-                string bosStr = cfg["bos_token"]?.ToString()
-                             ?? cfg["decoder_start_token"]?.ToString()
-                             ?? "</s>";
+                var cfg = JObject.Parse(File.ReadAllText(tokCfgPath));
+                string bosStr = cfg["bos_token"]?.ToString() ?? "</s>";
                 string eosStr = cfg["eos_token"]?.ToString() ?? "</s>";
-
                 if (tokenToId.TryGetValue(bosStr, out long b)) _decoderStartToken = b;
                 if (tokenToId.TryGetValue(eosStr, out long e)) _eosTokenId = e;
-
                 Debug.WriteLine($"TrOCR: tokenizer_config → BOS='{bosStr}'({_decoderStartToken}) EOS='{eosStr}'({_eosTokenId})");
             }
             catch (Exception ex)

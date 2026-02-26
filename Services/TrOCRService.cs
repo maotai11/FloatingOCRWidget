@@ -35,6 +35,18 @@ namespace FloatingOCRWidget.Services
         private bool _isInitialized;
         private bool _disposed;
 
+        // 1st priority: bundled models next to the exe (trocr_models/ in ZIP)
+        // 2nd priority: AppData (auto-downloaded on first use)
+        private static string ResolveModelDir()
+        {
+            var bundled = Path.Combine(AppContext.BaseDirectory, "trocr_models");
+            if (File.Exists(Path.Combine(bundled, "encoder_model.onnx")))
+                return bundled;
+            return Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "FloatingOCRWidget", "TrOCR");
+        }
+
         public static readonly string ModelDir = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "FloatingOCRWidget", "TrOCR");
@@ -69,18 +81,20 @@ namespace FloatingOCRWidget.Services
         {
             try
             {
-                Directory.CreateDirectory(ModelDir);
-                await EnsureModelsAsync(progress);
+                var activeDir = ResolveModelDir();
+                Directory.CreateDirectory(activeDir);
+                await EnsureModelsAsync(progress, activeDir);
 
                 var options = new SessionOptions();
                 options.GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_ALL;
 
                 _encoderSession = new InferenceSession(
-                    Path.Combine(ModelDir, "encoder_model.onnx"), options);
+                    Path.Combine(activeDir, "encoder_model.onnx"), options);
                 _decoderSession = new InferenceSession(
-                    Path.Combine(ModelDir, "decoder_model.onnx"), options);
+                    Path.Combine(activeDir, "decoder_model.onnx"), options);
 
-                _idToToken = LoadTokenizer(Path.Combine(ModelDir, "tokenizer.json"));
+                _idToToken = LoadTokenizer(Path.Combine(activeDir, "tokenizer.json"));
+                Debug.WriteLine($"TrOCR models loaded from: {activeDir}");
                 _isInitialized = true;
                 Debug.WriteLine($"TrOCR initialized. Vocab size: {_idToToken?.Count}");
                 return true;
@@ -92,7 +106,7 @@ namespace FloatingOCRWidget.Services
             }
         }
 
-        private async Task EnsureModelsAsync(IProgress<string> progress)
+        private async Task EnsureModelsAsync(IProgress<string> progress, string targetDir)
         {
             using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(15) };
 
@@ -104,7 +118,7 @@ namespace FloatingOCRWidget.Services
 
             foreach (var (remote, local) in modelFiles)
             {
-                var localPath = Path.Combine(ModelDir, local);
+                var localPath = Path.Combine(targetDir, local);
                 if (!File.Exists(localPath))
                 {
                     progress?.Report($"TrOCR: 下載 {local} (量化版，較小)…");
@@ -115,7 +129,7 @@ namespace FloatingOCRWidget.Services
                 }
             }
 
-            var tokenizerPath = Path.Combine(ModelDir, "tokenizer.json");
+            var tokenizerPath = Path.Combine(targetDir, "tokenizer.json");
             if (!File.Exists(tokenizerPath))
             {
                 progress?.Report("TrOCR: 下載 tokenizer…");

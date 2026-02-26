@@ -16,27 +16,34 @@ namespace FloatingOCRWidget.Services
     /// <summary>
     /// TrOCR handwriting recognition engine via ONNX Runtime.
     ///
-    /// Default model: Xenova/trocr-base-handwritten (English handwriting, ~172MB quantized)
+    /// Supports two model types automatically:
+    ///   - Traditional Chinese: ZihCiLin/trocr-traditional-chinese-historical-finetune
+    ///     (13,172 char BERT-style tokenizer, BOS=[CLS]=101, EOS=[SEP]=102)
+    ///   - English fallback: Xenova/trocr-base-handwritten
+    ///     (GPT-2 BPE tokenizer, BOS/EOS=2)
     ///
-    /// For Traditional Chinese handwriting, place your own Chinese TrOCR ONNX files at:
-    ///   %AppData%\FloatingOCRWidget\TrOCR\encoder_model.onnx
-    ///   %AppData%\FloatingOCRWidget\TrOCR\decoder_model.onnx
-    ///   %AppData%\FloatingOCRWidget\TrOCR\tokenizer.json
+    /// Model lookup order:
+    ///   1. <exe_dir>/trocr_models/  (bundled in ZIP)
+    ///   2. %AppData%/FloatingOCRWidget/TrOCR/  (auto-downloaded)
     ///
-    /// Export a Chinese TrOCR model to ONNX using Python:
-    ///   pip install optimum
-    ///   optimum-cli export onnx --model chineseocr/trocr-chinese ./trocr_onnx/
+    /// To use the Traditional Chinese model, run:
+    ///   python scripts/convert_trocr_chinese.py
+    ///   pwsh scripts/repackage.ps1 -Version 2.3.0 -Tag v2.3.0
     /// </summary>
     public class TrOCRService : IDisposable
     {
         private InferenceSession _encoderSession;
         private InferenceSession _decoderSession;
         private Dictionary<int, string> _idToToken;
+        private long _decoderStartToken = 2;  // set from tokenizer_config.json
+        private long _eosTokenId        = 2;
+        private bool _isBpeTokenizer    = true; // false = Chinese char-level
         private bool _isInitialized;
         private bool _disposed;
 
-        // 1st priority: bundled models next to the exe (trocr_models/ in ZIP)
-        // 2nd priority: AppData (auto-downloaded on first use)
+        // ── Model directory resolution ─────────────────────────────────────────
+        // Priority 1: bundled next to exe (ZIP users get offline Chinese model)
+        // Priority 2: AppData  (auto-download English model on first use)
         private static string ResolveModelDir()
         {
             var bundled = Path.Combine(AppContext.BaseDirectory, "trocr_models");
@@ -47,36 +54,22 @@ namespace FloatingOCRWidget.Services
                 "FloatingOCRWidget", "TrOCR");
         }
 
-        public static readonly string ModelDir = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "FloatingOCRWidget", "TrOCR");
-
-        // Xenova pre-exported quantized ONNX models (~84MB encoder + ~88MB decoder)
-        // Quantized = smaller download, slightly less accuracy, still very good for handwriting
+        // ── Fallback: English handwriting model (Xenova, pre-exported ONNX) ───
         private const string HF_ONNX_BASE =
             "https://huggingface.co/Xenova/trocr-base-handwritten/resolve/main/onnx/";
         private const string HF_TOKENIZER_URL =
             "https://huggingface.co/Xenova/trocr-base-handwritten/resolve/main/tokenizer.json";
 
-        // TrOCR (roberta-based) special token IDs
-        // decoder_start_token_id = 2 (</s>), EOS = 2
-        private const long DECODER_START_TOKEN = 2;
-        private const long EOS_TOKEN_ID = 2;
+        private const int IMAGE_HEIGHT    = 384;
+        private const int IMAGE_WIDTH     = 384;
+        private const int MAX_NEW_TOKENS  = 64;
 
-        private const int IMAGE_HEIGHT = 384;
-        private const int IMAGE_WIDTH = 384;
-        private const int MAX_NEW_TOKENS = 64;
-
-        // ImageNet-style normalization used by TrOCR feature extractor
         private static readonly float[] PIXEL_MEAN = { 0.5f, 0.5f, 0.5f };
         private static readonly float[] PIXEL_STD  = { 0.5f, 0.5f, 0.5f };
 
         public bool IsAvailable => _isInitialized && !_disposed;
 
-        /// <summary>
-        /// Initialize TrOCR. Downloads quantized ONNX models on first run (~172MB).
-        /// Returns false silently if download fails - OCR continues with PaddleOCR only.
-        /// </summary>
+        // ── Init ───────────────────────────────────────────────────────────────
         public async Task<bool> TryInitializeAsync(IProgress<string> progress = null)
         {
             try
@@ -93,10 +86,12 @@ namespace FloatingOCRWidget.Services
                 _decoderSession = new InferenceSession(
                     Path.Combine(activeDir, "decoder_model.onnx"), options);
 
-                _idToToken = LoadTokenizer(Path.Combine(activeDir, "tokenizer.json"));
-                Debug.WriteLine($"TrOCR models loaded from: {activeDir}");
+                _idToToken = LoadVocab(Path.Combine(activeDir, "tokenizer.json"));
+                LoadSpecialTokens(activeDir, _idToToken);
+
+                Debug.WriteLine($"TrOCR loaded from: {activeDir}");
+                Debug.WriteLine($"TrOCR vocab={_idToToken?.Count}, BOS={_decoderStartToken}, EOS={_eosTokenId}, BPE={_isBpeTokenizer}");
                 _isInitialized = true;
-                Debug.WriteLine($"TrOCR initialized. Vocab size: {_idToToken?.Count}");
                 return true;
             }
             catch (Exception ex)
@@ -106,8 +101,13 @@ namespace FloatingOCRWidget.Services
             }
         }
 
+        // ── Download fallback English model if no bundled model exists ─────────
         private async Task EnsureModelsAsync(IProgress<string> progress, string targetDir)
         {
+            // If bundled models already present, skip download
+            if (File.Exists(Path.Combine(targetDir, "encoder_model.onnx")))
+                return;
+
             using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(15) };
 
             var modelFiles = new[]
@@ -121,44 +121,94 @@ namespace FloatingOCRWidget.Services
                 var localPath = Path.Combine(targetDir, local);
                 if (!File.Exists(localPath))
                 {
-                    progress?.Report($"TrOCR: 下載 {local} (量化版，較小)…");
+                    progress?.Report($"TrOCR: 下載英文手寫模型 {local}…");
                     Debug.WriteLine($"TrOCR: downloading {remote}");
                     var data = await http.GetByteArrayAsync(HF_ONNX_BASE + remote);
                     await File.WriteAllBytesAsync(localPath, data);
-                    Debug.WriteLine($"TrOCR: {local} saved ({data.Length / 1024 / 1024}MB)");
+                    Debug.WriteLine($"TrOCR: saved {local} ({data.Length / 1024 / 1024}MB)");
                 }
             }
 
-            var tokenizerPath = Path.Combine(targetDir, "tokenizer.json");
-            if (!File.Exists(tokenizerPath))
+            var tokPath = Path.Combine(targetDir, "tokenizer.json");
+            if (!File.Exists(tokPath))
             {
                 progress?.Report("TrOCR: 下載 tokenizer…");
                 var data = await http.GetByteArrayAsync(HF_TOKENIZER_URL);
-                await File.WriteAllBytesAsync(tokenizerPath, data);
+                await File.WriteAllBytesAsync(tokPath, data);
             }
         }
 
-        private static Dictionary<int, string> LoadTokenizer(string path)
+        // ── Load vocab: tokenizer.json → { id: token_string } ─────────────────
+        private static Dictionary<int, string> LoadVocab(string path)
         {
-            var json = File.ReadAllText(path);
-            var obj = JObject.Parse(json);
-            // tokenizer.json → model.vocab: { "token": id }
-            var vocab = obj["model"]?["vocab"] as JObject;
-            if (vocab == null)
+            var obj = JObject.Parse(File.ReadAllText(path));
+
+            // Standard HuggingFace tokenizer.json format: model.vocab
+            var vocabObj = obj["model"]?["vocab"] as JObject;
+
+            // Some models store vocab at top level
+            if (vocabObj == null)
+                vocabObj = obj["vocab"] as JObject;
+
+            if (vocabObj == null)
             {
                 Debug.WriteLine("TrOCR: vocab not found in tokenizer.json");
                 return new Dictionary<int, string>();
             }
+
             var result = new Dictionary<int, string>();
-            foreach (var kv in vocab)
-                result[(int)(long)kv.Value!] = kv.Key;
+            foreach (var kv in vocabObj)
+                result[(int)(long)kv.Value] = kv.Key;
             return result;
         }
 
-        /// <summary>
-        /// Recognize handwritten text in the image using TrOCR.
-        /// Returns null if unavailable or inference fails.
-        /// </summary>
+        // ── Detect tokenizer type and load BOS/EOS from tokenizer_config.json ──
+        private void LoadSpecialTokens(string dir, Dictionary<int, string> vocab)
+        {
+            // Build reverse lookup for token string → id
+            var tokenToId = vocab.ToDictionary(kv => kv.Value, kv => (long)kv.Key);
+
+            // Detect tokenizer type:
+            // Chinese BERT-style: vocab has [CLS], [SEP], [PAD]  → char-level
+            // English GPT-2:      vocab has <s>, </s>, Ġ tokens  → BPE
+            bool hasCls = tokenToId.ContainsKey("[CLS]");
+            bool hasSep = tokenToId.ContainsKey("[SEP]");
+            _isBpeTokenizer = !hasCls;
+
+            if (hasCls && hasSep)
+            {
+                // Chinese BERT-style tokenizer
+                _decoderStartToken = tokenToId["[CLS]"];   // typically 101
+                _eosTokenId        = tokenToId["[SEP]"];   // typically 102
+                Debug.WriteLine($"TrOCR: Chinese BERT tokenizer. [CLS]={_decoderStartToken} [SEP]={_eosTokenId}");
+                return;
+            }
+
+            // Try tokenizer_config.json for explicit special token values
+            var configPath = Path.Combine(dir, "tokenizer_config.json");
+            if (!File.Exists(configPath)) return;
+
+            try
+            {
+                var cfg = JObject.Parse(File.ReadAllText(configPath));
+
+                string bosStr = cfg["bos_token"]?.ToString()
+                             ?? cfg["decoder_start_token"]?.ToString()
+                             ?? "</s>";
+                string eosStr = cfg["eos_token"]?.ToString() ?? "</s>";
+
+                if (tokenToId.TryGetValue(bosStr, out long b)) _decoderStartToken = b;
+                if (tokenToId.TryGetValue(eosStr, out long e)) _eosTokenId = e;
+
+                Debug.WriteLine($"TrOCR: tokenizer_config → BOS='{bosStr}'({_decoderStartToken}) EOS='{eosStr}'({_eosTokenId})");
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"TrOCR: tokenizer_config read error: {ex.Message}");
+            }
+        }
+
+        // ── Inference ──────────────────────────────────────────────────────────
         public string RecognizeHandwriting(Bitmap image)
         {
             if (!IsAvailable) return null;
@@ -167,62 +217,50 @@ namespace FloatingOCRWidget.Services
             {
                 var pixelValues = PreprocessImage(image);
 
-                // ── Encoder ──────────────────────────────────────────────────
-                var encInputs = new[]
-                {
-                    NamedOnnxValue.CreateFromTensor("pixel_values", pixelValues)
-                };
-                using var encOutputs = _encoderSession!.Run(encInputs);
-                // Clone so we can reuse across decoder steps
+                // Encoder
+                var encInputs = new[] { NamedOnnxValue.CreateFromTensor("pixel_values", pixelValues) };
+                using var encOutputs = _encoderSession.Run(encInputs);
                 var encoderHidden = encOutputs
                     .First(x => x.Name == "last_hidden_state")
                     .AsTensor<float>()
                     .Clone();
 
-                // ── Autoregressive decode ─────────────────────────────────────
-                var tokens = new List<long> { DECODER_START_TOKEN };
+                // Autoregressive greedy decode
+                var tokens   = new List<long> { _decoderStartToken };
                 var attnMask = new List<long> { 1 };
 
                 for (int step = 0; step < MAX_NEW_TOKENS; step++)
                 {
-                    var inputIdsTensor = new DenseTensor<long>(
-                        tokens.ToArray(), new[] { 1, tokens.Count });
-                    var attnMaskTensor = new DenseTensor<long>(
-                        attnMask.ToArray(), new[] { 1, attnMask.Count });
+                    var idsTensor  = new DenseTensor<long>(tokens.ToArray(),   new[] { 1, tokens.Count });
+                    var maskTensor = new DenseTensor<long>(attnMask.ToArray(), new[] { 1, attnMask.Count });
 
                     var decInputs = new List<NamedOnnxValue>
                     {
-                        NamedOnnxValue.CreateFromTensor("input_ids",            inputIdsTensor),
-                        NamedOnnxValue.CreateFromTensor("attention_mask",       attnMaskTensor),
-                        NamedOnnxValue.CreateFromTensor("encoder_hidden_states",encoderHidden),
+                        NamedOnnxValue.CreateFromTensor("input_ids",             idsTensor),
+                        NamedOnnxValue.CreateFromTensor("attention_mask",        maskTensor),
+                        NamedOnnxValue.CreateFromTensor("encoder_hidden_states", encoderHidden),
                     };
 
-                    using var decOutputs = _decoderSession!.Run(decInputs);
-                    var logits = decOutputs
-                        .First(x => x.Name == "logits")
-                        .AsTensor<float>();
+                    using var decOutputs = _decoderSession.Run(decInputs);
+                    var logits = decOutputs.First(x => x.Name == "logits").AsTensor<float>();
 
-                    // Greedy: argmax at last sequence position
                     int lastPos   = tokens.Count - 1;
                     int vocabSize = logits.Dimensions[2];
                     long nextToken = 0;
-                    float maxVal  = float.MinValue;
+                    float maxVal   = float.MinValue;
                     for (int v = 0; v < vocabSize; v++)
                     {
                         float val = logits[0, lastPos, v];
                         if (val > maxVal) { maxVal = val; nextToken = v; }
                     }
 
-                    // Stop on EOS (skip if it's the very first generated token)
-                    if (nextToken == EOS_TOKEN_ID && step > 0) break;
-
+                    if (nextToken == _eosTokenId && step > 0) break;
                     tokens.Add(nextToken);
                     attnMask.Add(1);
                 }
 
-                // Skip the initial DECODER_START_TOKEN
                 var text = DecodeTokens(tokens.Skip(1).Select(t => (int)t));
-                Debug.WriteLine($"TrOCR result: \"{text}\"");
+                Debug.WriteLine($"TrOCR: \"{text}\"");
                 return text;
             }
             catch (Exception ex)
@@ -232,7 +270,7 @@ namespace FloatingOCRWidget.Services
             }
         }
 
-        // Resize to 384×384 and normalize to [-1,1] (CHW float32 tensor)
+        // ── Image preprocessing ────────────────────────────────────────────────
         private DenseTensor<float> PreprocessImage(Bitmap image)
         {
             using var resized = new Bitmap(image, new Size(IMAGE_WIDTH, IMAGE_HEIGHT));
@@ -249,20 +287,37 @@ namespace FloatingOCRWidget.Services
             return tensor;
         }
 
-        // GPT-2 byte-level BPE: Ġ = space, Ċ = newline
+        // ── Token decoding ─────────────────────────────────────────────────────
+        // Handles both:
+        //   BPE (English):  Ġ=space, Ċ=newline, skip ## subword markers
+        //   BERT (Chinese): direct char concatenation, skip [special] tokens
         private string DecodeTokens(IEnumerable<int> ids)
         {
             if (_idToToken == null) return string.Empty;
 
             var sb = new StringBuilder();
             foreach (var id in ids)
-                if (_idToToken.TryGetValue(id, out var tok))
-                    sb.Append(tok);
+            {
+                if (!_idToToken.TryGetValue(id, out var tok)) continue;
 
-            return sb.ToString()
-                .Replace("Ġ", " ")
-                .Replace("Ċ", "\n")
-                .Trim();
+                if (_isBpeTokenizer)
+                {
+                    // GPT-2 BPE: Ġ = space prefix
+                    sb.Append(tok.Replace("Ġ", " ").Replace("Ċ", "\n"));
+                }
+                else
+                {
+                    // BERT char-level: skip [MASK], [UNK], [PAD] etc.
+                    // and ##subword markers
+                    if (tok.StartsWith("[") && tok.EndsWith("]")) continue;
+                    if (tok.StartsWith("##"))
+                        sb.Append(tok.Substring(2));
+                    else
+                        sb.Append(tok);
+                }
+            }
+
+            return sb.ToString().Trim();
         }
 
         public void Dispose()

@@ -48,7 +48,7 @@
 ### 核心技術
 - **Framework**: .NET 8.0 (Windows)
 - **UI**: WPF + Windows Forms 混合
-- **OCR 引擎**: PaddleOCR PP-OCRv3 (Sdcb.PaddleOCR 3.0.1)
+- **OCR 引擎**: PaddleOCR PP-OCRv4 (Sdcb.PaddleOCR 3.0.1)
 - **圖像處理**: OpenCvSharp4 4.11.0
 - **語言支援**: 繁中/簡中/英文 + 手寫辨識
 
@@ -176,6 +176,17 @@ A: 某些受保護的程式（如銀行軟體）可能阻止螢幕截圖。
 ---
 
 ## 📋 更新紀錄
+
+### v2.1.0 (2026-02-26)
+**手寫辨識強化：ChineseV4 + 圖片預處理**
+
+**改善：**
+- 升級 OCR 模型 PP-OCRv3 → PP-OCRv4（ChineseV3 → ChineseV4）
+- 新增圖片預處理管線（CLAHE 對比增強 + Otsu 二值化 + 降噪）
+- 雙引擎投票：同一張圖同時辨識原圖與預處理圖，取結果較豐富的版本
+- 繁體中文手寫辨識穩定性提升
+
+---
 
 ### v2.0.0 (2026-02-26)
 **重大升級：Tesseract → PaddleOCR**

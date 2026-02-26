@@ -26,15 +26,15 @@ namespace FloatingOCRWidget.Services
         {
             try
             {
-                // Use Chinese V3 models that support traditional Chinese, simplified Chinese, and English
-                var models = LocalFullModels.ChineseV3;
+                // Use Chinese V4 models (PP-OCRv4) - better handwriting and traditional Chinese support
+                var models = LocalFullModels.ChineseV4;
                 _ocrEngine = new PaddleOcrAll(models)
                 {
                     AllowRotateDetection = true,    // Enable rotated text detection
                     Enable180Classification = true  // Enable handwriting and 180-degree text support
                 };
 
-                System.Diagnostics.Debug.WriteLine("PaddleOCR engine initialized successfully with Chinese V3 models");
+                System.Diagnostics.Debug.WriteLine("PaddleOCR engine initialized successfully with Chinese V4 models");
             }
             catch (Exception ex)
             {
@@ -42,6 +42,32 @@ namespace FloatingOCRWidget.Services
                 throw new InvalidOperationException(
                     $"無法初始化 PaddleOCR 引擎: {ex.Message}\n請確保 PaddleOCR 模型正確安裝。");
             }
+        }
+
+        // Preprocess image to improve handwriting recognition accuracy
+        // Enhances contrast and reduces noise before OCR
+        private Mat PreprocessForHandwriting(Mat original)
+        {
+            using var gray = new Mat();
+            Cv2.CvtColor(original, gray, ColorConversionCodes.BGR2GRAY);
+
+            // CLAHE - adaptive contrast enhancement, works best for handwriting
+            using var clahe = Cv2.CreateCLAHE(clipLimit: 2.0, tileGridSize: new OpenCvSharp.Size(8, 8));
+            using var enhanced = new Mat();
+            clahe.Apply(gray, enhanced);
+
+            // Otsu adaptive binarization
+            using var binary = new Mat();
+            Cv2.Threshold(enhanced, binary, 0, 255, ThresholdTypes.Binary | ThresholdTypes.Otsu);
+
+            // Light denoising to remove speckles without blurring strokes
+            using var denoised = new Mat();
+            Cv2.MedianBlur(binary, denoised, 3);
+
+            // Convert back to BGR for PaddleOCR
+            var result = new Mat();
+            Cv2.CvtColor(denoised, result, ColorConversionCodes.GRAY2BGR);
+            return result;
         }
 
         public async Task<string> RecognizeTextAsync(Bitmap image)
@@ -58,16 +84,27 @@ namespace FloatingOCRWidget.Services
                     ms.Position = 0;
 
                     using var mat = Mat.FromStream(ms, ImreadModes.Color);
-                    var result = _ocrEngine.Run(mat);
 
-                    // Extract text from PaddleOCR result regions
-                    var text = string.Join("\n", result.Regions.Select(r => r.Text));
+                    // Run OCR on both original and preprocessed image, take the richer result
+                    using var preprocessed = PreprocessForHandwriting(mat);
 
-                    // Maintain existing post-processing behavior
+                    var result1 = _ocrEngine.Run(mat);
+                    var result2 = _ocrEngine.Run(preprocessed);
+
+                    // Pick result with more recognized content (better handwriting coverage)
+                    var regions = result1.Regions.Length >= result2.Regions.Length
+                        ? result1.Regions
+                        : result2.Regions;
+
+                    System.Diagnostics.Debug.WriteLine(
+                        $"PaddleOCR: original={result1.Regions.Length} regions, preprocessed={result2.Regions.Length} regions, using={regions.Length}");
+
+                    var text = string.Join("\n", regions.Select(r => r.Text));
+
+                    // Post-processing
                     text = Regex.Replace(text, @"[ \t]+", " ");
                     text = Regex.Replace(text, @"\n{3,}", "\n\n");
 
-                    System.Diagnostics.Debug.WriteLine($"PaddleOCR recognized {result.Regions.Length} text regions");
                     return text.Trim();
                 }
                 catch (Exception ex)

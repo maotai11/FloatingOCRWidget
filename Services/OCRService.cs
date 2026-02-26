@@ -15,11 +15,16 @@ namespace FloatingOCRWidget.Services
     public class OCRService : IDisposable
     {
         private PaddleOcrAll _ocrEngine;
+        private TrOCRService _trOcr;
         private bool _disposed = false;
 
         public OCRService()
         {
             InitializeEngine();
+            // TrOCR initializes in background - downloads ~172MB on first use
+            // Supplements PaddleOCR for English handwriting recognition
+            _trOcr = new TrOCRService();
+            _ = _trOcr.TryInitializeAsync();
         }
 
         private void InitializeEngine()
@@ -85,27 +90,39 @@ namespace FloatingOCRWidget.Services
 
                     using var mat = Mat.FromStream(ms, ImreadModes.Color);
 
-                    // Run OCR on both original and preprocessed image, take the richer result
+                    // ── PaddleOCR (primary – Traditional Chinese + all languages) ──
                     using var preprocessed = PreprocessForHandwriting(mat);
-
                     var result1 = _ocrEngine.Run(mat);
                     var result2 = _ocrEngine.Run(preprocessed);
 
-                    // Pick result with more recognized content (better handwriting coverage)
+                    // Pick PaddleOCR result with more regions
                     var regions = result1.Regions.Length >= result2.Regions.Length
                         ? result1.Regions
                         : result2.Regions;
 
                     System.Diagnostics.Debug.WriteLine(
-                        $"PaddleOCR: original={result1.Regions.Length} regions, preprocessed={result2.Regions.Length} regions, using={regions.Length}");
+                        $"PaddleOCR: original={result1.Regions.Length}, preprocessed={result2.Regions.Length}, using={regions.Length}");
 
-                    var text = string.Join("\n", regions.Select(r => r.Text));
+                    var paddleText = string.Join("\n", regions.Select(r => r.Text));
+
+                    // ── TrOCR (supplement – English handwriting) ──────────────────
+                    // Only use if PaddleOCR returned little content and TrOCR is ready
+                    string finalText = paddleText;
+                    if (_trOcr.IsAvailable && paddleText.Trim().Length < 5)
+                    {
+                        var trOcrText = _trOcr.RecognizeHandwriting(image);
+                        if (!string.IsNullOrWhiteSpace(trOcrText) && trOcrText.Length > paddleText.Length)
+                        {
+                            System.Diagnostics.Debug.WriteLine($"TrOCR supplement used: \"{trOcrText}\"");
+                            finalText = trOcrText;
+                        }
+                    }
 
                     // Post-processing
-                    text = Regex.Replace(text, @"[ \t]+", " ");
-                    text = Regex.Replace(text, @"\n{3,}", "\n\n");
+                    finalText = Regex.Replace(finalText, @"[ \t]+", " ");
+                    finalText = Regex.Replace(finalText, @"\n{3,}", "\n\n");
 
-                    return text.Trim();
+                    return finalText.Trim();
                 }
                 catch (Exception ex)
                 {
@@ -120,6 +137,7 @@ namespace FloatingOCRWidget.Services
             if (!_disposed)
             {
                 _ocrEngine?.Dispose();
+                _trOcr?.Dispose();
                 _disposed = true;
             }
         }

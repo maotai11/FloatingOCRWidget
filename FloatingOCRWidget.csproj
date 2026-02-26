@@ -7,8 +7,8 @@
     <UseWindowsForms>true</UseWindowsForms>
     <AssemblyTitle>Floating OCR Widget</AssemblyTitle>
     <AssemblyDescription>Floating desktop OCR widget with clipboard history</AssemblyDescription>
-    <AssemblyVersion>2.1.0.0</AssemblyVersion>
-    <FileVersion>2.1.0.0</FileVersion>
+    <AssemblyVersion>2.2.0.0</AssemblyVersion>
+    <FileVersion>2.2.0.0</FileVersion>
 
     <!-- Optimizations for offline deployment -->
     <SelfContained>true</SelfContained>
@@ -25,6 +25,7 @@
     <PackageReference Include="Sdcb.PaddleInference.runtime.win64.mkl" Version="2.5.0" />
     <PackageReference Include="OpenCvSharp4" Version="4.11.0.20250507" />
     <PackageReference Include="OpenCvSharp4.runtime.win" Version="4.11.0.20250507" />
+    <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.20.1" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
     <PackageReference Include="System.Drawing.Common" Version="8.0.2" />
   </ItemGroup>

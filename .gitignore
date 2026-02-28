@@ -36,3 +36,10 @@ Thumbs.db
 # Application specific
 settings.json
 clipboard_history.json
+
+# Large model files (distributed via GitHub Releases)
+trocr_onnx_quantized/
+trocr_onnx_temp/
+
+# Exe in root (build artifacts)
+*.exe

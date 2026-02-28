@@ -2,7 +2,7 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="OCR Widget"
-        Height="140" Width="240"
+        Height="200" Width="270"
         WindowStyle="None"
         AllowsTransparency="True"
         Background="Transparent"
@@ -21,6 +21,7 @@
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
                 <RowDefinition Height="*"/>
             </Grid.RowDefinitions>
 
@@ -28,17 +29,22 @@
             <StackPanel Grid.Row="0" Orientation="Horizontal" HorizontalAlignment="Center">
                 <Button Name="OCRButton" Content="OCR" Click="OCRButton_Click"
                         ToolTip="點擊開始螢幕區域OCR識別"/>
+                <!-- 繁中模式切換按鈕：亮色=開啟，灰色=關閉 -->
+                <Button Name="TraditionalButton" Content="繁" Click="TraditionalButton_Click"
+                        Width="28" ToolTip="繁中模式：自動偵測並將簡體轉回繁體（點擊切換）"
+                        Background="#3182CE" Foreground="White"
+                        BorderBrush="#2B6CB0" Padding="2,2"/>
                 <Button Name="HideButton" Content="隱藏" Click="HideButton_Click"
                         ToolTip="隱藏浮動視窗"/>
-                <Button Name="MenuButton" Content="≡" Click="MenuButton_Click" Width="24"
+                <Button Name="MenuButton" Content="&#8801;" Click="MenuButton_Click" Width="24"
                         ToolTip="開啟選單"/>
             </StackPanel>
 
             <!-- 透明度控制 -->
-            <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,8,0,0">
+            <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,6,0,0">
                 <TextBlock Text="透明度:" VerticalAlignment="Center"
                            FontSize="10" Foreground="#4A5568" Margin="0,0,4,0"/>
-                <Slider Name="OpacitySlider" Width="120"
+                <Slider Name="OpacitySlider" Width="130"
                         Minimum="0.3" Maximum="1.0" Value="0.9"
                         VerticalAlignment="Center"/>
                 <TextBlock Text="{Binding ElementName=OpacitySlider, Path=Value, StringFormat={}{0:P0}}"
@@ -46,23 +52,50 @@
                            Foreground="#4A5568" Margin="4,0,0,0"/>
             </StackPanel>
 
+            <!-- 分類篩選列 -->
+            <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,5,0,0">
+                <TextBlock Text="篩選:" VerticalAlignment="Center"
+                           FontSize="10" Foreground="#4A5568" Margin="0,0,4,0"/>
+                <ComboBox Name="CategoryFilter" Width="160" FontSize="10"
+                          SelectionChanged="CategoryFilter_SelectionChanged"
+                          SelectedIndex="0"/>
+            </StackPanel>
+
             <!-- 剪貼簿歷史區域 -->
-            <Border Grid.Row="2" Background="White"
+            <Border Grid.Row="3" Background="White"
                     BorderBrush="#CBD5E0" BorderThickness="1"
-                    CornerRadius="4" Margin="0,8,0,0"
+                    CornerRadius="4" Margin="0,5,0,0"
                     Name="ClipboardPanel">
-                <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="100">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="110">
                     <ListBox Name="ClipboardHistory"
                              Background="Transparent"
                              BorderThickness="0"
-                             SelectionChanged="ClipboardHistory_SelectionChanged">
+                             HorizontalContentAlignment="Stretch"
+                             SelectionChanged="ClipboardHistory_SelectionChanged"
+                             MouseRightButtonUp="ClipboardHistory_RightClick">
                         <ListBox.ItemTemplate>
                             <DataTemplate>
-                                <TextBlock Text="{Binding Preview}"
-                                           FontSize="9"
-                                           Foreground="#2D3748"
-                                           TextTrimming="CharacterEllipsis"
-                                           ToolTip="{Binding FullText}"/>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0"
+                                               Text="{Binding Preview}"
+                                               FontSize="9"
+                                               Foreground="#2D3748"
+                                               TextTrimming="CharacterEllipsis"
+                                               ToolTip="{Binding FullText}"
+                                               VerticalAlignment="Center"/>
+                                    <TextBlock Grid.Column="1"
+                                               Text="{Binding Category}"
+                                               FontSize="8"
+                                               Foreground="#718096"
+                                               Background="#EDF2F7"
+                                               Padding="3,1"
+                                               Margin="4,0,0,0"
+                                               VerticalAlignment="Center"/>
+                                </Grid>
                             </DataTemplate>
                         </ListBox.ItemTemplate>
                     </ListBox>

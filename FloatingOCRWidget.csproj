@@ -7,8 +7,8 @@
     <UseWindowsForms>true</UseWindowsForms>
     <AssemblyTitle>Floating OCR Widget</AssemblyTitle>
     <AssemblyDescription>Floating desktop OCR widget with clipboard history</AssemblyDescription>
-    <AssemblyVersion>2.3.0.0</AssemblyVersion>
-    <FileVersion>2.3.0.0</FileVersion>
+    <AssemblyVersion>2.4.0.0</AssemblyVersion>
+    <FileVersion>2.4.0.0</FileVersion>
 
     <!-- Optimizations for offline deployment -->
     <SelfContained>true</SelfContained>

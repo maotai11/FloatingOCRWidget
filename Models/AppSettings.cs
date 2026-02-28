@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+
 namespace FloatingOCRWidget.Models
 {
     public class AppSettings
@@ -13,6 +15,8 @@ namespace FloatingOCRWidget.Models
         public bool EnableRotationDetection { get; set; } = true; // 啟用旋轉文字檢測
         public string HotKey { get; set; } = "Ctrl+Alt+O"; // 全域快捷鍵
         public bool ShowNotifications { get; set; } = true;
+        public bool PreferTraditionalChinese { get; set; } = true; // 繁中模式（智慧轉換）
+        public List<string> Categories { get; set; } = new List<string> { "未分類", "工作", "個人" };
 
         // OCR 相關設定
         public class OCRSettings

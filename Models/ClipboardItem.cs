@@ -8,6 +8,7 @@ namespace FloatingOCRWidget.Models
         public string Preview { get; set; }
         public DateTime Timestamp { get; set; }
         public ClipboardItemType Type { get; set; }
+        public string Category { get; set; } = "未分類";
 
         public ClipboardItem(string text, ClipboardItemType type = ClipboardItemType.Text)
         {
@@ -15,6 +16,7 @@ namespace FloatingOCRWidget.Models
             Preview = CreatePreview(FullText);
             Timestamp = DateTime.Now;
             Type = type;
+            Category = "未分類";
         }
 
         private string CreatePreview(string text)

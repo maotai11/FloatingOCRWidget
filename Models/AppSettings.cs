@@ -16,7 +16,12 @@ namespace FloatingOCRWidget.Models
         public string HotKey { get; set; } = "Ctrl+Alt+O"; // 全域快捷鍵
         public bool ShowNotifications { get; set; } = true;
         public bool PreferTraditionalChinese { get; set; } = true; // 繁中模式（智慧轉換）
-        public List<string> Categories { get; set; } = new List<string> { "未分類", "工作", "個人" };
+
+        // 已知標籤清單（可由使用者新增/刪除）
+        public List<string> KnownTags { get; set; } = new List<string> { "工作", "個人", "重要" };
+
+        // 舊版相容欄位，不再使用
+        public List<string> Categories { get; set; }
 
         // OCR 相關設定
         public class OCRSettings

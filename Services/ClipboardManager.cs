@@ -79,7 +79,20 @@ namespace FloatingOCRWidget.Services
                 if (File.Exists(_historyFilePath))
                 {
                     var json = File.ReadAllText(_historyFilePath);
-                    return JsonConvert.DeserializeObject<List<ClipboardItem>>(json) ?? new List<ClipboardItem>();
+                    var items = JsonConvert.DeserializeObject<List<ClipboardItem>>(json) ?? new List<ClipboardItem>();
+
+                    // 遷移舊版 Category → Tags
+                    foreach (var item in items)
+                    {
+                        if (item.Tags == null) item.Tags = new System.Collections.Generic.List<string>();
+                        if (item.Tags.Count == 0
+                            && !string.IsNullOrEmpty(item.Category)
+                            && item.Category != "未分類")
+                        {
+                            item.Tags.Add(item.Category);
+                        }
+                    }
+                    return items;
                 }
             }
             catch { }

@@ -24,11 +24,12 @@ namespace FloatingOCRWidget
         private WinForms.NotifyIcon _notifyIcon;
         private bool _isHidden = false;
         private bool _preferTraditional = true;
-        private string _selectedCategory = "全部分類";
 
-        // 完整歷史；ClipboardHistory.ItemsSource 會依分類篩選
+        // 目前篩選中的標籤；空集合 = 顯示全部
+        private readonly HashSet<string> _selectedTags = new HashSet<string>();
+        private const string UntaggedKey = "__untagged__";
+
         public ObservableCollection<ClipboardItem> ClipboardItems { get; set; }
-        // 目前篩選後顯示的清單
         private ObservableCollection<ClipboardItem> _filteredItems;
 
         public event PropertyChangedEventHandler PropertyChanged;
@@ -51,19 +52,15 @@ namespace FloatingOCRWidget
 
             InitializeSystemTray();
 
-            // 載入歷史記錄
             var history = _clipboardManager.LoadHistory();
             foreach (var item in history) ClipboardItems.Add(item);
 
-            // 初始化分類篩選 ComboBox
-            RefreshCategoryFilter();
-
             ClipboardHistory.ItemsSource = _filteredItems;
-            ApplyCategoryFilter();
+            RefreshTagFilter();
+            ApplyTagFilter();
 
             DataContext = this;
 
-            // 套用儲存的視窗位置
             var settings = _settingsManager.Settings;
             if (settings.WindowLeft >= 0 && settings.WindowTop >= 0)
             {
@@ -76,11 +73,10 @@ namespace FloatingOCRWidget
                 this.Top  = 20;
             }
 
-            // 更新繁中按鈕外觀
             UpdateTraditionalButton();
         }
 
-        // ── 繁中模式 ─────────────────────────────────────────────────────────
+        // ── 繁中模式 ──────────────────────────────────────────────────────────
 
         private void TraditionalButton_Click(object sender, RoutedEventArgs e)
         {
@@ -95,53 +91,101 @@ namespace FloatingOCRWidget
         {
             if (_preferTraditional)
             {
-                TraditionalButton.Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(49, 130, 206)); // #3182CE
+                TraditionalButton.Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(49, 130, 206));
                 TraditionalButton.Foreground = System.Windows.Media.Brushes.White;
                 TraditionalButton.ToolTip    = "繁中模式：開啟（點擊關閉）";
             }
             else
             {
-                TraditionalButton.Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(203, 213, 224)); // #CBD5E0
-                TraditionalButton.Foreground = new SolidColorBrush(System.Windows.Media.Color.FromRgb(74, 85, 104));   // #4A5568
+                TraditionalButton.Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(203, 213, 224));
+                TraditionalButton.Foreground = new SolidColorBrush(System.Windows.Media.Color.FromRgb(74, 85, 104));
                 TraditionalButton.ToolTip    = "繁中模式：關閉（點擊開啟）";
             }
         }
 
-        // ── 分類篩選 ─────────────────────────────────────────────────────────
+        // ── 標籤篩選 chip ──────────────────────────────────────────────────────
 
-        private void RefreshCategoryFilter()
+        private void RefreshTagFilter()
         {
-            var categories = new List<string> { "全部分類" };
-            categories.AddRange(_settingsManager.Settings.Categories);
+            TagFilterPanel.Children.Clear();
 
-            CategoryFilter.ItemsSource   = categories;
-            CategoryFilter.SelectedIndex = 0;
+            // [全部] chip
+            bool allSelected = _selectedTags.Count == 0;
+            TagFilterPanel.Children.Add(MakeFilterChip("全部", allSelected, () =>
+            {
+                _selectedTags.Clear();
+                RefreshTagFilter();
+                ApplyTagFilter();
+            }));
+
+            // 每個已知標籤
+            foreach (var tag in _settingsManager.Settings.KnownTags)
+            {
+                var t = tag;
+                bool sel = _selectedTags.Contains(t);
+                TagFilterPanel.Children.Add(MakeFilterChip(t, sel, () => ToggleTagFilter(t)));
+            }
+
+            // [未分類] chip（篩出沒有任何標籤的項目）
+            bool untaggedSel = _selectedTags.Contains(UntaggedKey);
+            TagFilterPanel.Children.Add(MakeFilterChip("未分類", untaggedSel, () => ToggleTagFilter(UntaggedKey)));
         }
 
-        private void CategoryFilter_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        private void ToggleTagFilter(string tag)
         {
-            _selectedCategory = CategoryFilter.SelectedItem as string ?? "全部分類";
-            ApplyCategoryFilter();
+            if (_selectedTags.Contains(tag))
+                _selectedTags.Remove(tag);
+            else
+                _selectedTags.Add(tag);
+
+            RefreshTagFilter();
+            ApplyTagFilter();
         }
 
-        private void ApplyCategoryFilter()
+        private Button MakeFilterChip(string label, bool selected, Action onClick)
+        {
+            var btn = new Button
+            {
+                Content    = label,
+                Style      = (Style)FindResource("TagChipStyle"),
+                Background = selected
+                    ? new SolidColorBrush(System.Windows.Media.Color.FromRgb(49, 130, 206))
+                    : new SolidColorBrush(System.Windows.Media.Color.FromRgb(226, 232, 240)),
+                Foreground = selected
+                    ? System.Windows.Media.Brushes.White
+                    : new SolidColorBrush(System.Windows.Media.Color.FromRgb(74, 85, 104)),
+            };
+            btn.Click += (_, __) => onClick();
+            return btn;
+        }
+
+        private void ApplyTagFilter()
         {
             _filteredItems.Clear();
-            var source = _selectedCategory == "全部分類"
-                ? ClipboardItems
-                : ClipboardItems.Where(x => x.Category == _selectedCategory);
 
-            foreach (var item in source)
-                _filteredItems.Add(item);
+            if (_selectedTags.Count == 0)
+            {
+                foreach (var item in ClipboardItems)
+                    _filteredItems.Add(item);
+                return;
+            }
+
+            foreach (var item in ClipboardItems)
+            {
+                bool include =
+                    (_selectedTags.Contains(UntaggedKey) && item.Tags.Count == 0) ||
+                    item.Tags.Any(t => _selectedTags.Contains(t));
+
+                if (include) _filteredItems.Add(item);
+            }
         }
 
-        // ── 剪貼簿歷史（去重 + 分類） ──────────────────────────────────────
+        // ── 剪貼簿事件 ────────────────────────────────────────────────────────
 
         private void OnClipboardChanged(object sender, ClipboardItem newItem)
         {
             Application.Current.Dispatcher.Invoke(() =>
             {
-                // 去重：若已存在相同文字，移到最頂；否則新增
                 var existing = ClipboardItems.FirstOrDefault(x => x.FullText == newItem.FullText);
                 if (existing != null)
                 {
@@ -155,12 +199,12 @@ namespace FloatingOCRWidget
                         ClipboardItems.RemoveAt(ClipboardItems.Count - 1);
                 }
 
-                ApplyCategoryFilter();
+                ApplyTagFilter();
                 _clipboardManager.SaveHistory(ClipboardItems.ToList());
             });
         }
 
-        // ── 滑鼠事件 ─────────────────────────────────────────────────────────
+        // ── 滑鼠事件 ──────────────────────────────────────────────────────────
 
         private void Window_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         {
@@ -176,7 +220,7 @@ namespace FloatingOCRWidget
             if (ClipboardHistory.SelectedItem is ClipboardItem item)
             {
                 _clipboardManager.SetClipboard(item.FullText);
-                Notify("已複製", "歷史記錄已複製到剪貼簿");
+                // 不跳通知
                 ClipboardHistory.SelectedItem = null;
             }
         }
@@ -188,35 +232,19 @@ namespace FloatingOCRWidget
 
             var menu = new ContextMenu();
 
-            // 複製
+            // 複製（無通知）
             menu.Items.Add(new MenuItem
             {
                 Header  = "複製",
-                Command = new RelayCommand(() =>
-                {
-                    _clipboardManager.SetClipboard(item.FullText);
-                    Notify("已複製", "已複製到剪貼簿");
-                })
+                Command = new RelayCommand(() => _clipboardManager.SetClipboard(item.FullText))
             });
 
-            // 設定分類 → 子選單
-            var categoryMenu = new MenuItem { Header = "設定分類" };
-            foreach (var cat in _settingsManager.Settings.Categories)
+            // 管理標籤
+            menu.Items.Add(new MenuItem
             {
-                var catName = cat;
-                categoryMenu.Items.Add(new MenuItem
-                {
-                    Header   = catName,
-                    FontWeight = item.Category == catName ? FontWeights.Bold : FontWeights.Normal,
-                    Command  = new RelayCommand(() =>
-                    {
-                        item.Category = catName;
-                        ApplyCategoryFilter();
-                        _clipboardManager.SaveHistory(ClipboardItems.ToList());
-                    })
-                });
-            }
-            menu.Items.Add(categoryMenu);
+                Header  = "管理標籤...",
+                Command = new RelayCommand(() => ShowTagEditor(item))
+            });
 
             menu.Items.Add(new Separator());
 
@@ -227,7 +255,7 @@ namespace FloatingOCRWidget
                 Command = new RelayCommand(() =>
                 {
                     ClipboardItems.Remove(item);
-                    ApplyCategoryFilter();
+                    ApplyTagFilter();
                     _clipboardManager.SaveHistory(ClipboardItems.ToList());
                 })
             });
@@ -252,7 +280,137 @@ namespace FloatingOCRWidget
             return null;
         }
 
-        // ── OCR ──────────────────────────────────────────────────────────────
+        // ── 標籤編輯 dialog ────────────────────────────────────────────────────
+
+        /// <summary>
+        /// 右鍵「管理標籤」：針對單一 ClipboardItem 新增/移除標籤。
+        /// </summary>
+        private void ShowTagEditor(ClipboardItem item)
+        {
+            var knownTags = _settingsManager.Settings.KnownTags;
+
+            var dlg = new Window
+            {
+                Title  = "管理標籤",
+                Width  = 300,
+                Height = 250,
+                WindowStartupLocation = WindowStartupLocation.CenterScreen,
+                Owner      = this,
+                ResizeMode = ResizeMode.NoResize,
+                WindowStyle = WindowStyle.ToolWindow
+            };
+
+            var root = new Grid { Margin = new Thickness(10) };
+            root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) });
+            root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+            root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) });
+            root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) });
+
+            // 預覽文字
+            var preview = new TextBlock
+            {
+                Text         = item.Preview,
+                FontSize     = 10,
+                Foreground   = System.Windows.Media.Brushes.Gray,
+                Margin       = new Thickness(0, 0, 0, 6),
+                TextTrimming = TextTrimming.CharacterEllipsis
+            };
+            Grid.SetRow(preview, 0);
+            root.Children.Add(preview);
+
+            // 標籤 chips（可點選 toggle）
+            var chipPanel = new WrapPanel { Orientation = Orientation.Horizontal };
+            var chipScroll = new ScrollViewer
+            {
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                Content = chipPanel,
+                Margin  = new Thickness(0, 0, 0, 8)
+            };
+            Grid.SetRow(chipScroll, 1);
+            root.Children.Add(chipScroll);
+
+            // 目前 item 的標籤（複製一份用來編輯）
+            var editingTags = new HashSet<string>(item.Tags);
+
+            void RebuildChips()
+            {
+                chipPanel.Children.Clear();
+                foreach (var tag in knownTags)
+                {
+                    var t = tag;
+                    bool on = editingTags.Contains(t);
+                    var chip = new Button
+                    {
+                        Content    = t,
+                        Style      = (Style)FindResource("TagChipStyle"),
+                        Background = on
+                            ? new SolidColorBrush(System.Windows.Media.Color.FromRgb(49, 130, 206))
+                            : new SolidColorBrush(System.Windows.Media.Color.FromRgb(226, 232, 240)),
+                        Foreground = on
+                            ? System.Windows.Media.Brushes.White
+                            : new SolidColorBrush(System.Windows.Media.Color.FromRgb(74, 85, 104)),
+                        Margin = new Thickness(0, 0, 4, 4)
+                    };
+                    chip.Click += (_, __) =>
+                    {
+                        if (editingTags.Contains(t)) editingTags.Remove(t);
+                        else editingTags.Add(t);
+                        RebuildChips();
+                    };
+                    chipPanel.Children.Add(chip);
+                }
+            }
+            RebuildChips();
+
+            // 新增標籤列
+            var addPanel = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 8) };
+            var newTagBox = new TextBox { Width = 140, FontSize = 10, Margin = new Thickness(0, 0, 4, 0) };
+            var addBtn    = new Button  { Content = "+ 新增標籤", FontSize = 10, Padding = new Thickness(6, 2, 6, 2) };
+            addBtn.Click += (_, __) =>
+            {
+                var newTag = newTagBox.Text.Trim();
+                if (string.IsNullOrEmpty(newTag)) return;
+                if (!knownTags.Contains(newTag))
+                {
+                    knownTags.Add(newTag);
+                    _settingsManager.SaveSettings();
+                    RefreshTagFilter();
+                }
+                editingTags.Add(newTag);
+                newTagBox.Clear();
+                RebuildChips();
+            };
+            // Enter 鍵新增
+            newTagBox.KeyDown += (_, ke) => { if (ke.Key == Key.Return) addBtn.RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); };
+            addPanel.Children.Add(newTagBox);
+            addPanel.Children.Add(addBtn);
+            Grid.SetRow(addPanel, 2);
+            root.Children.Add(addPanel);
+
+            // OK / Cancel
+            var btnRow = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
+            var ok     = new Button { Content = "確定", Width = 60, Margin = new Thickness(0, 0, 6, 0), IsDefault = true };
+            var cancel = new Button { Content = "取消", Width = 60, IsCancel = true };
+            btnRow.Children.Add(ok);
+            btnRow.Children.Add(cancel);
+            Grid.SetRow(btnRow, 3);
+            root.Children.Add(btnRow);
+
+            dlg.Content = root;
+
+            bool confirmed = false;
+            ok.Click     += (_, __) => { confirmed = true; dlg.Close(); };
+            cancel.Click += (_, __) => dlg.Close();
+            dlg.ShowDialog();
+
+            if (!confirmed) return;
+
+            item.Tags = editingTags.ToList();
+            ApplyTagFilter();
+            _clipboardManager.SaveHistory(ClipboardItems.ToList());
+        }
+
+        // ── OCR ───────────────────────────────────────────────────────────────
 
         private async void OCRButton_Click(object sender, RoutedEventArgs e)
         {
@@ -293,7 +451,7 @@ namespace FloatingOCRWidget
             }
         }
 
-        // ── 選單 ─────────────────────────────────────────────────────────────
+        // ── 選單 ──────────────────────────────────────────────────────────────
 
         private void HideButton_Click(object sender, RoutedEventArgs e) => HideWidget();
 
@@ -301,10 +459,9 @@ namespace FloatingOCRWidget
         {
             var menu = new ContextMenu();
 
-            // 管理分類
-            var manageCat = new MenuItem { Header = "管理分類..." };
-            manageCat.Click += (_, __) => ManageCategories();
-            menu.Items.Add(manageCat);
+            var manageTags = new MenuItem { Header = "管理標籤清單..." };
+            manageTags.Click += (_, __) => ManageKnownTags();
+            menu.Items.Add(manageTags);
 
             menu.Items.Add(new MenuItem
             {
@@ -312,7 +469,7 @@ namespace FloatingOCRWidget
                 Command = new RelayCommand(() =>
                 {
                     ClipboardItems.Clear();
-                    ApplyCategoryFilter();
+                    ApplyTagFilter();
                     _clipboardManager.ClearHistory();
                 })
             });
@@ -324,56 +481,94 @@ namespace FloatingOCRWidget
             menu.IsOpen          = true;
         }
 
-        private void ManageCategories()
+        /// <summary>
+        /// 漢堡選單→管理標籤清單：新增/刪除全域已知標籤。
+        /// </summary>
+        private void ManageKnownTags()
         {
-            var current = string.Join(", ", _settingsManager.Settings.Categories);
+            var knownTags = _settingsManager.Settings.KnownTags;
 
-            // 輕量 WPF 輸入視窗
             var dlg = new Window
             {
-                Title           = "管理分類",
-                Width           = 320,
-                Height          = 140,
-                WindowStartupLocation = WindowStartupLocation.CenterOwner,
-                Owner           = this,
-                ResizeMode      = ResizeMode.NoResize,
-                WindowStyle     = WindowStyle.ToolWindow
+                Title  = "管理標籤清單",
+                Width  = 280,
+                Height = 260,
+                WindowStartupLocation = WindowStartupLocation.CenterScreen,
+                Owner       = this,
+                ResizeMode  = ResizeMode.NoResize,
+                WindowStyle = WindowStyle.ToolWindow
             };
 
-            var sp  = new StackPanel { Margin = new Thickness(10) };
-            sp.Children.Add(new TextBlock { Text = "輸入分類名稱（用逗號分隔）：", Margin = new Thickness(0, 0, 0, 6) });
+            var root = new Grid { Margin = new Thickness(10) };
+            root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+            root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) });
+            root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) });
 
-            var tb  = new TextBox { Text = current, Margin = new Thickness(0, 0, 0, 10) };
-            sp.Children.Add(tb);
+            // 標籤清單（每項含刪除按鈕）
+            var listPanel = new StackPanel();
+            var listScroll = new ScrollViewer
+            {
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                Content = listPanel,
+                Margin  = new Thickness(0, 0, 0, 8)
+            };
+            Grid.SetRow(listScroll, 0);
+            root.Children.Add(listScroll);
 
-            var btnPanel = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
-            var ok  = new Button { Content = "確定", Width = 60, Margin = new Thickness(0, 0, 6, 0), IsDefault = true };
-            var cancel = new Button { Content = "取消", Width = 60, IsCancel = true };
-            btnPanel.Children.Add(ok);
-            btnPanel.Children.Add(cancel);
-            sp.Children.Add(btnPanel);
+            void RebuildList()
+            {
+                listPanel.Children.Clear();
+                foreach (var tag in knownTags.ToList())
+                {
+                    var t   = tag;
+                    var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 3) };
+                    var lbl = new TextBlock { Text = t, FontSize = 11, Width = 170, VerticalAlignment = VerticalAlignment.Center };
+                    var del = new Button   { Content = "✕", FontSize = 9, Width = 22, Height = 20, Padding = new Thickness(0), Margin = new Thickness(4, 0, 0, 0) };
+                    del.Click += (_, __) =>
+                    {
+                        knownTags.Remove(t);
+                        _settingsManager.SaveSettings();
+                        RefreshTagFilter();
+                        RebuildList();
+                    };
+                    row.Children.Add(lbl);
+                    row.Children.Add(del);
+                    listPanel.Children.Add(row);
+                }
+            }
+            RebuildList();
 
-            dlg.Content = sp;
+            // 新增標籤列
+            var addPanel = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 8) };
+            var newTagBox = new TextBox { Width = 150, FontSize = 10, Margin = new Thickness(0, 0, 4, 0) };
+            var addBtn    = new Button  { Content = "+ 新增", FontSize = 10, Padding = new Thickness(6, 2, 6, 2) };
+            addBtn.Click += (_, __) =>
+            {
+                var newTag = newTagBox.Text.Trim();
+                if (string.IsNullOrEmpty(newTag) || knownTags.Contains(newTag)) return;
+                knownTags.Add(newTag);
+                _settingsManager.SaveSettings();
+                RefreshTagFilter();
+                newTagBox.Clear();
+                RebuildList();
+            };
+            newTagBox.KeyDown += (_, ke) => { if (ke.Key == Key.Return) addBtn.RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); };
+            addPanel.Children.Add(newTagBox);
+            addPanel.Children.Add(addBtn);
+            Grid.SetRow(addPanel, 1);
+            root.Children.Add(addPanel);
 
-            bool confirmed = false;
-            ok.Click     += (_, __) => { confirmed = true; dlg.Close(); };
-            cancel.Click += (_, __) => dlg.Close();
+            // 關閉
+            var closeBtn = new Button { Content = "關閉", Width = 60, HorizontalAlignment = HorizontalAlignment.Right, IsCancel = true };
+            closeBtn.Click += (_, __) => dlg.Close();
+            Grid.SetRow(closeBtn, 2);
+            root.Children.Add(closeBtn);
+
+            dlg.Content = root;
             dlg.ShowDialog();
-
-            if (!confirmed || string.IsNullOrWhiteSpace(tb.Text)) return;
-
-            var cats = tb.Text.Split(',')
-                              .Select(c => c.Trim())
-                              .Where(c => !string.IsNullOrEmpty(c))
-                              .Distinct()
-                              .ToList();
-
-            _settingsManager.Settings.Categories = cats;
-            _settingsManager.SaveSettings();
-            RefreshCategoryFilter();
         }
 
-        // ── 系統托盤 / 視窗控制 ──────────────────────────────────────────────
+        // ── 系統托盤 / 視窗控制 ───────────────────────────────────────────────
 
         private void InitializeSystemTray()
         {
@@ -411,11 +606,11 @@ namespace FloatingOCRWidget
         private void ShowAbout()
         {
             MessageBox.Show(
-                "Floating OCR Widget v2.4.0\n\n" +
+                "Floating OCR Widget v2.5.0\n\n" +
                 "• 螢幕框選 OCR 識別（PaddleOCR V4）\n" +
                 "• 繁中模式：自動偵測並轉換簡→繁\n" +
                 "• TrOCR 手寫補充引擎\n" +
-                "• 剪貼簿歷史去重 + 分類管理\n" +
+                "• 剪貼簿歷史 + 多標籤管理\n" +
                 "• 浮動透明視窗 + 系統托盤",
                 "關於", MessageBoxButton.OK, MessageBoxImage.Information);
         }

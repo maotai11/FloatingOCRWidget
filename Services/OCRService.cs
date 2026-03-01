@@ -41,13 +41,14 @@ namespace FloatingOCRWidget.Services
         {
             try
             {
-                var models = LocalFullModels.ChineseV4;
+                // PP-OCRv5：最新一代，繁簡中文精度更高，直接內建於 Sdcb.PaddleOCR.Models.Local 3.0.1
+                var models = LocalFullModels.ChineseV5;
                 _ocrEngine = new PaddleOcrAll(models)
                 {
                     AllowRotateDetection = true,
                     Enable180Classification = true
                 };
-                System.Diagnostics.Debug.WriteLine("PaddleOCR engine initialized with Chinese V4 models");
+                System.Diagnostics.Debug.WriteLine("PaddleOCR engine initialized with Chinese V5 (PP-OCRv5) models");
             }
             catch (Exception ex)
             {

@@ -30,11 +30,11 @@ namespace FloatingOCRWidget.Services
         public OCRService()
         {
             InitializeEngine();
-            // TrOCR initializes in background - downloads ~172MB on first use
             _trOcr = new TrOCRService();
-            _ = _trOcr.TryInitializeAsync();
-            // Warm up PaddleOCR in background so first real scan doesn't suffer cold start
-            _ = WarmUpAsync();
+            // 延遲 5s 再 warmup：讓 WPF 視窗先完成初始化，避免啟動時搶佔 CPU
+            _ = Task.Delay(TimeSpan.FromSeconds(5)).ContinueWith(_ => WarmUpAsync());
+            // 延遲 10s 再初始化 TrOCR：warmup 結束後才開始，避免同時佔用大量記憶體
+            _ = Task.Delay(TimeSpan.FromSeconds(10)).ContinueWith(_ => _trOcr.TryInitializeAsync());
         }
 
         private void InitializeEngine()

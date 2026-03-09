@@ -28,6 +28,17 @@ namespace FloatingOCRWidget.Models
 
         public event PropertyChangedEventHandler PropertyChanged;
 
+        /// <summary>
+        /// 更新文字內容並同步更新 Preview，觸發 PropertyChanged 通知 UI。
+        /// </summary>
+        public void UpdateText(string newText)
+        {
+            FullText = newText ?? string.Empty;
+            Preview  = CreatePreview(FullText);
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(FullText)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Preview)));
+        }
+
         // 供 JSON 反序列化用
         public ClipboardItem() { _tags = new List<string>(); }
 

@@ -239,6 +239,13 @@ namespace FloatingOCRWidget
                 Command = new RelayCommand(() => _clipboardManager.SetClipboard(item.FullText))
             });
 
+            // 編輯文字
+            menu.Items.Add(new MenuItem
+            {
+                Header  = "編輯文字...",
+                Command = new RelayCommand(() => ShowEditDialog(item))
+            });
+
             // 管理標籤
             menu.Items.Add(new MenuItem
             {
@@ -278,6 +285,79 @@ namespace FloatingOCRWidget
                 obj = VisualTreeHelper.GetParent(obj);
             }
             return null;
+        }
+
+        // ── 文字編輯 dialog ────────────────────────────────────────────────────
+
+        /// <summary>
+        /// 右鍵「編輯文字」：直接修改剪貼簿歷史項目的文字內容。
+        /// </summary>
+        private void ShowEditDialog(ClipboardItem item)
+        {
+            var dlg = new Window
+            {
+                Title  = "編輯文字",
+                Width  = 420,
+                Height = 320,
+                WindowStartupLocation = WindowStartupLocation.CenterScreen,
+                Owner      = this,
+                ResizeMode = ResizeMode.CanResizeWithGrip,
+                WindowStyle = WindowStyle.ToolWindow
+            };
+
+            var root = new Grid { Margin = new Thickness(10) };
+            root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+            root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) });
+            root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) });
+
+            // 多行文字編輯框
+            var textBox = new TextBox
+            {
+                Text = item.FullText,
+                AcceptsReturn = true,
+                TextWrapping  = System.Windows.TextWrapping.Wrap,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                FontSize   = 11,
+                Margin     = new Thickness(0, 0, 0, 6),
+                FontFamily = new System.Windows.Media.FontFamily("Microsoft JhengHei UI, Consolas")
+            };
+            Grid.SetRow(textBox, 0);
+            root.Children.Add(textBox);
+
+            // 字元數統計
+            var charInfo = new TextBlock
+            {
+                FontSize   = 9,
+                Foreground = System.Windows.Media.Brushes.Gray,
+                Margin     = new Thickness(0, 0, 0, 8)
+            };
+            void UpdateCharInfo() => charInfo.Text = $"{textBox.Text.Length} 字元";
+            UpdateCharInfo();
+            textBox.TextChanged += (_, __) => UpdateCharInfo();
+            Grid.SetRow(charInfo, 1);
+            root.Children.Add(charInfo);
+
+            // OK / Cancel
+            var btnRow = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
+            var ok     = new Button { Content = "確定", Width = 60, Margin = new Thickness(0, 0, 6, 0), IsDefault = true };
+            var cancel = new Button { Content = "取消", Width = 60, IsCancel = true };
+            btnRow.Children.Add(ok);
+            btnRow.Children.Add(cancel);
+            Grid.SetRow(btnRow, 2);
+            root.Children.Add(btnRow);
+
+            dlg.Content = root;
+
+            bool confirmed = false;
+            ok.Click     += (_, __) => { confirmed = true; dlg.Close(); };
+            cancel.Click += (_, __) => dlg.Close();
+            dlg.ShowDialog();
+
+            if (!confirmed || textBox.Text == item.FullText) return;
+
+            item.UpdateText(textBox.Text);
+            ApplyTagFilter();
+            _clipboardManager.SaveHistory(ClipboardItems.ToList());
         }
 
         // ── 標籤編輯 dialog ────────────────────────────────────────────────────

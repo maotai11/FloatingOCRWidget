@@ -14,16 +14,21 @@
 
 ## 🚀 快速開始
 
-### 方法一：直接執行 (推薦)
+### 方法一：ZIP 完整版 (推薦，含 TrOCR 手寫模型)
 
-1. 下載 `publish/withdata/` 整個資料夾
-2. 直接雙擊 `FloatingOCRWidget.exe` 執行
-3. 無需安裝任何其他軟體
+1. 至 [Releases](../../releases) 頁面下載 `FloatingOCRWidget_vX.X.X_WithTrOCR.zip`
+2. **解壓縮到任意資料夾**（例如桌面或 D 槽）
+3. 直接雙擊 `FloatingOCRWidget.exe` 執行
 
-### 方法二：單檔版本
+> ⚠️ **重要：`trocr_onnx_quantized/` 資料夾不可移動或刪除**，必須和 EXE 放在同一目錄，否則手寫辨識功能失效
 
-1. 下載 `publish/standalone/FloatingOCRWidget.exe`
-2. 直接執行（檔案較大，啟動稍慢）
+### 方法二：單檔版本 (不含 TrOCR 手寫模型)
+
+1. 至 Releases 下載單獨的 `FloatingOCRWidget.exe`
+2. 直接執行（僅 PaddleOCR 印刷體辨識，首次啟動較慢）
+
+> **首次啟動提示**：Windows SmartScreen 可能出現「Windows 已保護您的電腦」警告。
+> 請點選「**更多資訊**」→「**仍要執行**」即可正常啟動。這是未簽章程式的正常現象。
 
 ## 📖 使用方法
 
@@ -48,28 +53,28 @@
 ### 核心技術
 - **Framework**: .NET 8.0 (Windows)
 - **UI**: WPF + Windows Forms 混合
-- **OCR 引擎**: PaddleOCR PP-OCRv4 (Sdcb.PaddleOCR 3.0.1)
+- **OCR 引擎**: PaddleOCR PP-OCRv5 (Sdcb.PaddleOCR 3.0.1)
+- **手寫補充引擎**: TrOCR (ONNX Runtime，繁體中文 fine-tune)
 - **圖像處理**: OpenCvSharp4 4.11.0
 - **語言支援**: 繁中/簡中/英文 + 手寫辨識
 
 ### 系統需求
 - **作業系統**: Windows 10/11 (x64)
 - **記憶體**: 建議 4GB 以上
-- **磁碟空間**: 約 736MB（完整版）/ 448MB（單檔版）
+- **磁碟空間**: 完整版 ZIP 解壓後約 750MB；建議至少 2GB 可用空間（首次啟動暫存）
 - **.NET Runtime**: 不需要（已包含）
 
-### 檔案結構
+### 檔案結構（ZIP 版解壓後）
 ```
-publish/paddleocr-withdata/
-├── FloatingOCRWidget.exe             # 主程式
-├── Sdcb.PaddleOCR.Models.LocalV3.dll # PaddleOCR ChineseV3 模型 (132MB)
-├── OpenCvSharpExtern.dll             # 圖像處理引擎 (60MB)
-├── Sdcb.PaddleInference.dll          # PaddleOCR 推理引擎
-├── *.dll                             # .NET 運行庫
-└── 其他支援檔案...
-
-publish/paddleocr-standalone/
-└── FloatingOCRWidget.exe             # 單一執行檔 (448MB，含所有依賴)
+FloatingOCRWidget_v2.5.0/
+├── FloatingOCRWidget.exe             # 主程式（單一執行檔）
+└── trocr_onnx_quantized/             # TrOCR 手寫模型（不可移動）
+    ├── encoder_model.onnx            # 視覺編碼器 (84MB)
+    ├── decoder_model.onnx            # 解碼器 (218MB)
+    ├── tokenizer.json                # 詞彙表 (13,176 繁中字元)
+    ├── config.json
+    ├── tokenizer_config.json
+    └── special_tokens_map.json
 ```
 
 ## ⚡ 效能優化
@@ -158,7 +163,7 @@ dotnet publish -c Release --self-contained -r win-x64 -p:PublishSingleFile=true 
 ## 🆘 常見問題
 
 ### Q: 程式無法啟動？
-A: 確認是否為 Windows x64 系統，並檢查是否有防毒軟體攔截。
+A: 確認是否為 Windows x64 系統，並檢查是否有防毒軟體攔截。若出現 SmartScreen 警告，請點「更多資訊」→「仍要執行」。
 
 ### Q: OCR 識別率不高？
 A: 確保截圖區域清晰，文字對比度高。PaddleOCR 支援手寫文字，但極草書或藝術字體效果有限。
@@ -176,6 +181,20 @@ A: 某些受保護的程式（如銀行軟體）可能阻止螢幕截圖。
 ---
 
 ## 📋 更新紀錄
+
+### v2.5.0 (2026-03-09)
+**TrOCR 模型路徑修正 + 全面中文化**
+
+**修正：**
+- 修正 TrOCR 模型路徑解析邏輯，同時支援 `trocr_onnx_quantized/`（v2.5 release）和 `trocr_models/`（舊版）資料夾名稱
+- 修正全域錯誤訊息從英文改為中文
+- 修正系統托盤 tooltip 從英文改為中文
+- 修正「關於」對話框 OCR 引擎版本顯示（PP-OCRv4 → PP-OCRv5）
+- 修正 `repackage.ps1` 缺少 `dotnet publish` 失敗檢查（B7）
+- 修正 `repackage.ps1` 預設版本號過舊（2.3.0 → 2.5.0）
+- 更新 README：正確的下載指引、SmartScreen 說明、磁碟空間需求
+
+---
 
 ### v2.1.0 (2026-02-26)
 **手寫辨識強化：ChineseV4 + 圖片預處理**

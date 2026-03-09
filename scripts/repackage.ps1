@@ -9,8 +9,8 @@
 #   或直接: pwsh scripts/repackage.ps1
 
 param(
-    [string]$Version = "2.3.0",
-    [string]$Tag     = "v2.3.0"
+    [string]$Version = "2.5.0",
+    [string]$Tag     = "v2.5.0"
 )
 
 $ErrorActionPreference = "Stop"
@@ -25,14 +25,19 @@ Write-Host "FloatingOCRWidget 重新打包腳本" -ForegroundColor Cyan
 Write-Host "Version: $Version | Tag: $Tag" -ForegroundColor Cyan
 Write-Host "======================================`n"
 
-# ── 確認 trocr_models 存在 ─────────────────────────────────────────
-$TrOCRModels = "$Publish\trocr_models"
-if (-Not (Test-Path "$TrOCRModels\encoder_model.onnx")) {
-    Write-Warning "trocr_models\encoder_model.onnx 不存在！"
-    Write-Warning "請先執行: python scripts/convert_trocr_chinese.py"
+# ── 確認 TrOCR 模型存在（支援兩種資料夾名稱）─────────────────────
+# trocr_onnx_quantized = v2.5+ release 慣例；trocr_models = repackage.ps1 舊慣例
+$TrOCRModels = $null
+foreach ($candidate in @("trocr_onnx_quantized", "trocr_models")) {
+    $p = "$Publish\$candidate"
+    if (Test-Path "$p\encoder_model.onnx") { $TrOCRModels = $p; break }
+}
+if (-Not $TrOCRModels) {
+    Write-Warning "找不到 TrOCR 模型！請先執行: python scripts/convert_trocr_chinese.py"
+    Write-Warning "模型應放在: $Publish\trocr_onnx_quantized\ 或 $Publish\trocr_models\"
     exit 1
 }
-Write-Host "[OK] trocr_models 已存在" -ForegroundColor Green
+Write-Host "[OK] TrOCR 模型已存在: $TrOCRModels" -ForegroundColor Green
 
 # ── 更新版本號 ─────────────────────────────────────────────────────
 Write-Host "`n[1/4] 更新版本號 → $Version..."
@@ -45,19 +50,29 @@ $csproj = "$Root\FloatingOCRWidget.csproj"
 # ── dotnet publish ─────────────────────────────────────────────────
 Write-Host "`n[2/4] dotnet publish (完整版 + 單檔版)..."
 Set-Location $Root
-dotnet publish -c Release --self-contained -r win-x64 -o $Publish
-dotnet publish -c Release --self-contained -r win-x64 -p:PublishSingleFile=true -o $Standalone
 
-# trocr_models 資料夾在 publish 之後可能被清掉，重新確認
-if (-Not (Test-Path "$TrOCRModels\encoder_model.onnx")) {
-    Write-Host "  trocr_models 被 publish 清除，從 AppData 補回..."
-    $AppDataTrOCR = "$env:APPDATA\FloatingOCRWidget\TrOCR"
-    New-Item -ItemType Directory -Path $TrOCRModels -Force | Out-Null
-    foreach ($f in @("encoder_model.onnx","decoder_model.onnx","tokenizer.json")) {
-        $src = "$AppDataTrOCR\$f"
-        if (Test-Path $src) { Copy-Item $src "$TrOCRModels\$f" -Force }
-    }
+# 先備份 TrOCR 模型到 Temp，防止 publish 清除
+$TrOCRBackup = "$env:TEMP\trocr_backup_$($Tag -replace '[^a-zA-Z0-9]', '')"
+Write-Host "  備份 TrOCR 模型至 $TrOCRBackup..."
+if (Test-Path $TrOCRBackup) { Remove-Item $TrOCRBackup -Recurse -Force }
+Copy-Item $TrOCRModels $TrOCRBackup -Recurse
+
+$ModelFolderName = Split-Path $TrOCRModels -Leaf
+
+dotnet publish -c Release --self-contained -r win-x64 -o $Publish
+if ($LASTEXITCODE -ne 0) { Write-Error "dotnet publish (完整版) 失敗！"; exit $LASTEXITCODE }
+
+dotnet publish -c Release --self-contained -r win-x64 -p:PublishSingleFile=true -o $Standalone
+if ($LASTEXITCODE -ne 0) { Write-Error "dotnet publish (單檔版) 失敗！"; exit $LASTEXITCODE }
+
+# TrOCR 模型在 publish 之後可能被清掉，從備份補回
+$TrOCRDest = "$Publish\$ModelFolderName"
+if (-Not (Test-Path "$TrOCRDest\encoder_model.onnx")) {
+    Write-Host "  TrOCR 模型被 publish 清除，從備份補回..."
+    Copy-Item $TrOCRBackup $TrOCRDest -Recurse -Force
 }
+Write-Host "  TrOCR 模型確認存在: $TrOCRDest" -ForegroundColor Green
+$TrOCRModels = $TrOCRDest
 
 # ── 打包 ZIP ───────────────────────────────────────────────────────
 Write-Host "`n[3/4] 打包 ZIP → $ZipName..."

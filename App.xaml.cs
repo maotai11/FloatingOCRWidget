@@ -37,7 +37,7 @@ namespace FloatingOCRWidget
 
         private void OnDispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)
         {
-            MessageBox.Show($"An error occurred: {e.Exception.Message}", "Error",
+            MessageBox.Show($"發生未預期的錯誤：{e.Exception.Message}", "錯誤",
                 MessageBoxButton.OK, MessageBoxImage.Error);
             e.Handled = true;
         }

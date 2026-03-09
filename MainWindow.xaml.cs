@@ -576,7 +576,7 @@ namespace FloatingOCRWidget
             {
                 Icon    = SystemIcons.Application,
                 Visible = true,
-                Text    = "Floating OCR Widget"
+                Text    = "浮動 OCR 工具"
             };
 
             var contextMenu = new WinForms.ContextMenuStrip();
@@ -606,8 +606,8 @@ namespace FloatingOCRWidget
         private void ShowAbout()
         {
             MessageBox.Show(
-                "Floating OCR Widget v2.5.0\n\n" +
-                "• 螢幕框選 OCR 識別（PaddleOCR V4）\n" +
+                "浮動 OCR 工具 v2.5.0\n\n" +
+                "• 螢幕框選 OCR 識別（PaddleOCR PP-OCRv5）\n" +
                 "• 繁中模式：自動偵測並轉換簡→繁\n" +
                 "• TrOCR 手寫補充引擎\n" +
                 "• 剪貼簿歷史 + 多標籤管理\n" +

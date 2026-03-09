@@ -23,8 +23,9 @@ namespace FloatingOCRWidget.Services
     ///     (GPT-2 BPE tokenizer, BOS/EOS=2)
     ///
     /// Model lookup order:
-    ///   1. <exe_dir>/trocr_models/  (bundled in ZIP)
-    ///   2. %AppData%/FloatingOCRWidget/TrOCR/  (auto-downloaded)
+    ///   1a. <exe_dir>/trocr_onnx_quantized/  (v2.5+ release ZIP 資料夾)
+    ///   1b. <exe_dir>/trocr_models/           (舊版 / repackage.ps1 輸出)
+    ///   2.  %AppData%/FloatingOCRWidget/TrOCR/  (auto-downloaded)
     ///
     /// To use the Traditional Chinese model, run:
     ///   python scripts/convert_trocr_chinese.py
@@ -42,13 +43,17 @@ namespace FloatingOCRWidget.Services
         private bool _disposed;
 
         // ── Model directory resolution ─────────────────────────────────────────
-        // Priority 1: bundled next to exe (ZIP users get offline Chinese model)
-        // Priority 2: AppData  (auto-download English model on first use)
+        // Priority 1a: <exe_dir>/trocr_onnx_quantized/  (v2.5+ release ZIP 資料夾名稱)
+        // Priority 1b: <exe_dir>/trocr_models/           (舊版或 repackage.ps1 輸出名稱)
+        // Priority 2:  %AppData%/FloatingOCRWidget/TrOCR/ (自動下載 fallback)
         private static string ResolveModelDir()
         {
-            var bundled = Path.Combine(AppContext.BaseDirectory, "trocr_models");
-            if (File.Exists(Path.Combine(bundled, "encoder_model.onnx")))
-                return bundled;
+            foreach (var candidate in new[] { "trocr_onnx_quantized", "trocr_models" })
+            {
+                var bundled = Path.Combine(AppContext.BaseDirectory, candidate);
+                if (File.Exists(Path.Combine(bundled, "encoder_model.onnx")))
+                    return bundled;
+            }
             return Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
                 "FloatingOCRWidget", "TrOCR");

@@ -37,7 +37,10 @@ namespace FloatingOCRWidget.Services
                 if (Clipboard.ContainsText())
                     _lastClipboardText = Clipboard.GetText();
             }
-            catch { }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Clipboard init read error: {ex.Message}");
+            }
 
             _clipboardMonitor.Start();
         }
@@ -54,7 +57,11 @@ namespace FloatingOCRWidget.Services
                     ClipboardChanged?.Invoke(this, new ClipboardItem(current, ClipboardItemType.Text));
                 }
             }
-            catch { }
+            catch (Exception ex)
+            {
+                // 剪貼簿被其他程式鎖住時常見，屬於預期情況
+                System.Diagnostics.Debug.WriteLine($"Clipboard monitor tick error: {ex.Message}");
+            }
         }
 
         public void SetClipboard(string text, ClipboardItemType type = ClipboardItemType.OCRResult)
@@ -95,7 +102,10 @@ namespace FloatingOCRWidget.Services
                     return items;
                 }
             }
-            catch { }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Load history error: {ex.Message}");
+            }
             return new List<ClipboardItem>();
         }
 
@@ -106,12 +116,16 @@ namespace FloatingOCRWidget.Services
                 File.WriteAllText(_historyFilePath,
                     JsonConvert.SerializeObject(history.Take(50).ToList(), Formatting.Indented));
             }
-            catch { }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Save history error: {ex.Message}");
+            }
         }
 
         public void ClearHistory()
         {
-            try { if (File.Exists(_historyFilePath)) File.Delete(_historyFilePath); } catch { }
+            try { if (File.Exists(_historyFilePath)) File.Delete(_historyFilePath); }
+            catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"Clear history error: {ex.Message}"); }
         }
 
         public void Dispose()

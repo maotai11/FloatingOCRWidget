@@ -43,3 +43,12 @@ trocr_onnx_temp/
 
 # Exe in root (build artifacts)
 *.exe
+
+# AI 協作工具工作目錄（不應進版控）
+.claude/
+.autonomous/
+.windsurf/
+.cursor/
+.aider*
+.continue/
+.copilot/

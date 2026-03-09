@@ -74,6 +74,18 @@ if (-Not (Test-Path "$TrOCRDest\encoder_model.onnx")) {
 Write-Host "  TrOCR 模型確認存在: $TrOCRDest" -ForegroundColor Green
 $TrOCRModels = $TrOCRDest
 
+# ── EXE 時間戳驗證（B1：確認 publish 實際更新了 EXE）──────────────
+$WithdataExe = "$Publish\FloatingOCRWidget.exe"
+$StandaloneExe = "$Standalone\FloatingOCRWidget.exe"
+foreach ($exePath in @($WithdataExe, $StandaloneExe)) {
+    if (-Not (Test-Path $exePath)) {
+        Write-Error "EXE 不存在，publish 可能失敗：$exePath"
+        exit 1
+    }
+    $ts = (Get-Item $exePath).LastWriteTime
+    Write-Host "  EXE: $(Split-Path $exePath -Parent | Split-Path -Leaf)\FloatingOCRWidget.exe  時間戳: $ts" -ForegroundColor Green
+}
+
 # ── 打包 ZIP ───────────────────────────────────────────────────────
 Write-Host "`n[3/4] 打包 ZIP → $ZipName..."
 if (Test-Path $ZipPath) { Remove-Item $ZipPath -Force }

@@ -9,8 +9,8 @@
 #   或直接: pwsh scripts/repackage.ps1
 
 param(
-    [string]$Version = "2.5.0",
-    [string]$Tag     = "v2.5.0"
+    [string]$Version = "2.5.1",
+    [string]$Tag     = "v2.5.1"
 )
 
 $ErrorActionPreference = "Stop"
@@ -101,6 +101,7 @@ gh release create $Tag `
     "$Standalone\FloatingOCRWidget.exe" `
     --title "$Tag - TrOCR 繁體中文手寫 (離線)" `
     --notes $Notes
+if ($LASTEXITCODE -ne 0) { Write-Error "gh release create 失敗！請確認 gh CLI 已登入且 tag 尚未存在"; exit $LASTEXITCODE }
 
 Write-Host "`n======================================" -ForegroundColor Cyan
 Write-Host "✓ 完成！Release: https://github.com/maotai11/FloatingOCRWidget/releases/tag/$Tag" -ForegroundColor Green

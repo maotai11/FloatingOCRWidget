@@ -145,7 +145,7 @@ def main():
         print(f"  本機目錄 : {APPDATA_DIR}")
         print()
         print("接下來執行:")
-        print("  pwsh scripts/repackage.ps1 -Version 2.3.0 -Tag v2.3.0")
+        print("  pwsh scripts/repackage.ps1")
     print("=" * 60)
 
 if __name__ == "__main__":

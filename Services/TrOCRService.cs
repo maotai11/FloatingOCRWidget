@@ -45,12 +45,20 @@ namespace FloatingOCRWidget.Services
         // ── Model directory resolution ─────────────────────────────────────────
         // Priority 1a: <exe_dir>/trocr_onnx_quantized/  (v2.5+ release ZIP 資料夾名稱)
         // Priority 1b: <exe_dir>/trocr_models/           (舊版或 repackage.ps1 輸出名稱)
-        // Priority 2:  %AppData%/FloatingOCRWidget/TrOCR/ (自動下載 fallback)
+        // Priority 2:  %AppData%/FloatingOCRWidget/TrOCR/ (fallback)
+        //
+        // 注意：PublishSingleFile 模式下 AppContext.BaseDirectory 回傳 %TEMP% 解壓目錄，
+        // 不是 EXE 所在目錄。必須用 Environment.ProcessPath 取得 EXE 真實路徑。
+        private static string GetExeDir() =>
+            Path.GetDirectoryName(Environment.ProcessPath ?? AppContext.BaseDirectory)
+            ?? AppContext.BaseDirectory;
+
         private static string ResolveModelDir()
         {
+            var exeDir = GetExeDir();
             foreach (var candidate in new[] { "trocr_onnx_quantized", "trocr_models" })
             {
-                var bundled = Path.Combine(AppContext.BaseDirectory, candidate);
+                var bundled = Path.Combine(exeDir, candidate);
                 if (File.Exists(Path.Combine(bundled, "encoder_model.onnx")))
                     return bundled;
             }

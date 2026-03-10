@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.ComponentModel;
+using System.Threading.Tasks;
 using System.Collections.ObjectModel;
 using System.Windows;
 using System.Windows.Controls;
@@ -42,14 +43,14 @@ namespace FloatingOCRWidget
             _preferTraditional = _settingsManager.Settings.PreferTraditionalChinese;
 
             _screenCapture = new ScreenCapture();
-            _ocrService = new OCRService();
-            _ocrService.PreferTraditionalChinese = _preferTraditional;
+            // _ocrService 在 Loaded 事件異步初始化，避免原生 DLL 載入失敗阻止視窗顯示
 
             _clipboardManager = new ClipboardManager();
             ClipboardItems = new ObservableCollection<ClipboardItem>();
             _filteredItems = new ObservableCollection<ClipboardItem>();
             _clipboardManager.ClipboardChanged += OnClipboardChanged;
 
+            // 托盤優先初始化：確保即使 OCR 引擎失敗，使用者仍能看到托盤圖示
             InitializeSystemTray();
 
             var history = _clipboardManager.LoadHistory();
@@ -74,6 +75,36 @@ namespace FloatingOCRWidget
             }
 
             UpdateTraditionalButton();
+
+            // OCR 引擎延後到視窗顯示後才初始化
+            this.Loaded += MainWindow_Loaded;
+        }
+
+        private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
+        {
+            App.WriteLog("視窗已顯示，開始初始化 OCR 引擎");
+            OCRButton.IsEnabled = false;
+            OCRButton.Content   = "初始化...";
+            try
+            {
+                await Task.Run(() =>
+                {
+                    _ocrService = new OCRService();
+                    _ocrService.PreferTraditionalChinese = _preferTraditional;
+                });
+                OCRButton.IsEnabled = true;
+                OCRButton.Content   = "OCR";
+                App.WriteLog("OCR 引擎初始化成功");
+            }
+            catch (Exception ex)
+            {
+                App.WriteLog($"[ERROR] OCR 引擎初始化失敗：{ex}");
+                OCRButton.Content   = "引擎失效";
+                OCRButton.IsEnabled = false;
+                OCRButton.ToolTip   = $"OCR 引擎初始化失敗：{ex.Message}";
+                Notify("OCR 引擎失敗",
+                    $"PaddleOCR 無法載入：{ex.Message}\n\n詳細資訊：{App.LogPath}");
+            }
         }
 
         // ── 繁中模式 ──────────────────────────────────────────────────────────
@@ -494,6 +525,11 @@ namespace FloatingOCRWidget
 
         private async void OCRButton_Click(object sender, RoutedEventArgs e)
         {
+            if (_ocrService == null)
+            {
+                Notify("OCR 引擎尚未就緒", "請稍候，引擎仍在初始化中，或初始化已失敗，請查看托盤通知。");
+                return;
+            }
             try
             {
                 OCRButton.IsEnabled = false;

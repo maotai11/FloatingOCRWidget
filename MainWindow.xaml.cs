@@ -83,27 +83,51 @@ namespace FloatingOCRWidget
         private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
         {
             App.WriteLog("視窗已顯示，開始初始化 OCR 引擎");
+
+            // 顯示進度列
+            InitProgressPanel.Visibility = Visibility.Visible;
+            InitStatusText.Text          = "正在載入 PaddleOCR 引擎...";
+            InitProgressBar.IsIndeterminate = true;
             OCRButton.IsEnabled = false;
             OCRButton.Content   = "初始化...";
+
             try
             {
+                App.WriteLog("[Phase 1] 建立 OCRService...");
+                InitStatusText.Text = "載入 PaddleOCR 語言模型...";
                 await Task.Run(() =>
                 {
                     _ocrService = new OCRService();
                     _ocrService.PreferTraditionalChinese = _preferTraditional;
                 });
-                OCRButton.IsEnabled = true;
-                OCRButton.Content   = "OCR";
+                App.WriteLog("[Phase 1] OCRService 建立完成");
+
+                // 短暫顯示「就緒」
+                InitProgressBar.IsIndeterminate = false;
+                InitProgressBar.Value = 100;
+                InitStatusText.Text   = "OCR 引擎已就緒";
+                OCRButton.IsEnabled   = true;
+                OCRButton.Content     = "OCR";
                 App.WriteLog("OCR 引擎初始化成功");
+
+                await Task.Delay(1200);
+                InitProgressPanel.Visibility = Visibility.Collapsed;
             }
             catch (Exception ex)
             {
                 App.WriteLog($"[ERROR] OCR 引擎初始化失敗：{ex}");
+
+                InitProgressBar.IsIndeterminate = false;
+                InitProgressBar.Foreground = System.Windows.Media.Brushes.Tomato;
+                InitProgressBar.Value = 0;
+                InitStatusText.Foreground = System.Windows.Media.Brushes.DarkRed;
+                InitStatusText.Text = $"引擎載入失敗，請查看 startup.log";
+
                 OCRButton.Content   = "引擎失效";
                 OCRButton.IsEnabled = false;
                 OCRButton.ToolTip   = $"OCR 引擎初始化失敗：{ex.Message}";
                 Notify("OCR 引擎失敗",
-                    $"PaddleOCR 無法載入：{ex.Message}\n\n詳細資訊：{App.LogPath}");
+                    $"PaddleOCR 無法載入：{ex.Message}\n\n詳細資訊：\n{App.LogPath}");
             }
         }
 

@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Threading;
 
@@ -49,6 +50,9 @@ namespace FloatingOCRWidget
             // 捕捉非 Dispatcher 執行緒未處理異常（Task、Thread 等）
             AppDomain.CurrentDomain.UnhandledException += OnAppDomainUnhandledException;
 
+            // 捕捉 Task.Run 等背景任務的未觀察例外（防止 .NET 靜默吞掉 Task 崩潰）
+            TaskScheduler.UnobservedTaskException += OnUnobservedTaskException;
+
             base.OnStartup(e);
             WriteLog("OnStartup 完成");
         }
@@ -79,6 +83,12 @@ namespace FloatingOCRWidget
         {
             WriteLog($"[FATAL AppDomain] isTerminating={e.IsTerminating} — {e.ExceptionObject}");
             // 非 UI 執行緒異常：只能寫 log，CLR 會自行終止進程
+        }
+
+        private static void OnUnobservedTaskException(object sender, UnobservedTaskExceptionEventArgs e)
+        {
+            WriteLog($"[UnobservedTask] {e.Exception}");
+            e.SetObserved(); // 標記為已觀察，防止 .NET 6+ 預設的進程終止
         }
     }
 }

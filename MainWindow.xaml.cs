@@ -112,7 +112,8 @@ namespace FloatingOCRWidget
         private void TraditionalButton_Click(object sender, RoutedEventArgs e)
         {
             _preferTraditional = !_preferTraditional;
-            _ocrService.PreferTraditionalChinese = _preferTraditional;
+            if (_ocrService != null)
+                _ocrService.PreferTraditionalChinese = _preferTraditional;
             _settingsManager.Settings.PreferTraditionalChinese = _preferTraditional;
             _settingsManager.SaveSettings();
             UpdateTraditionalButton();

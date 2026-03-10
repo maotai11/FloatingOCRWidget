@@ -173,6 +173,13 @@ dotnet publish -c Release --self-contained -r win-x64 -p:PublishSingleFile=true 
 ### Q: 程式無法啟動？
 A: 確認是否為 Windows x64 系統，並檢查是否有防毒軟體攔截。若出現 SmartScreen 警告，請點「更多資訊」→「仍要執行」。
 
+### Q: 視窗出現了，但 OCR 按鈕顯示「初始化...」且無法點擊？
+A: 這是正常現象。PaddleOCR 引擎在背景載入需要 **5～10 秒**，期間 OCR 按鈕會顯示「初始化...」並暫時停用。載入完成後按鈕會自動恢復為「OCR」並可正常使用。**請勿在此期間關閉程式或重複點擊。**
+
+> 💡 若超過 30 秒仍顯示「初始化...」或按鈕變為「引擎失效」，請檢查：
+> 1. 是否有防毒軟體封鎖 PaddleOCR DLL（加入白名單後重試）
+> 2. 查看 `%LocalAppData%\FloatingOCRWidget\startup.log` 的錯誤訊息
+
 ### Q: OCR 識別率不高？
 A: 確保截圖區域清晰，文字對比度高。PaddleOCR 支援手寫文字，但極草書或藝術字體效果有限。
 
@@ -189,6 +196,24 @@ A: 某些受保護的程式（如銀行軟體）可能阻止螢幕截圖。
 ---
 
 ## 📋 更新紀錄
+
+### v2.5.2 (2026-03-10)
+**乾淨離線機啟動修正**
+
+**修正：**
+- 修正在乾淨離線機上雙擊 EXE 後無視窗跳出的問題（殭屍進程 bug）
+  - 將 `OCRService` 初始化從建構子移至 `Window.Loaded` 事件，避免初始化失敗時視窗無法顯示
+  - `DispatcherUnhandledException` 改在顯示錯誤訊息後呼叫 `Shutdown(1)`，防止殭屍進程
+  - 新增 `AppDomain.CurrentDomain.UnhandledException` 捕捉非 UI 執行緒例外
+- 修正 OCR 引擎初始化失敗時「繁/簡」切換按鈕拋出 NullReferenceException
+- 修正 TrOCR 模型路徑在 SingleFile 發布模式下解析錯誤（改用 `Environment.ProcessPath`）
+- OCR 引擎初始化期間 OCR 按鈕顯示「初始化...」並停用，完成後自動恢復；失敗時顯示「引擎失效」並附上說明提示
+
+**新增：**
+- 啟動 log 寫入 `%LocalAppData%\FloatingOCRWidget\startup.log`，方便排查離線機啟動問題
+- FAQ 說明 OCR 按鈕「初始化...」的正常等待時間及排查方式
+
+---
 
 ### v2.5.1 (2026-03-09)
 **資源優化 + 歷史編輯功能**
